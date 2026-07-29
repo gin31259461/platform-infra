@@ -1,0 +1,17 @@
+---
+- name: Reload runner user systemd
+  ansible.builtin.command:
+    argv:
+      - runuser
+      - --user
+      - "{{ runner.user }}"
+      - --
+      - env
+      - "XDG_RUNTIME_DIR=/run/user/{{ runner_uid }}"
+      - "DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/{{ runner_uid }}/bus"
+      - systemctl
+      - --user
+      - daemon-reload
+  args:
+    chdir: "/home/{{ runner.user }}"
+  changed_when: true

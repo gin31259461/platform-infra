@@ -1,0 +1,53 @@
+---
+# Copy this file to config.yml. Replace every REPLACE_* value before use.
+stack:
+  type: gitlab-runner
+  id: frontend
+  description: Frontend GitLab Runner
+
+gitlab:
+  url: https://REPLACE_WITH_GITLAB_HOSTNAME
+  hostname: REPLACE_WITH_GITLAB_HOSTNAME
+  health_url: https://REPLACE_WITH_GITLAB_HOSTNAME/-/health
+
+runner:
+  name: A-frontend-podman
+  user: gitlab-runner-frontend
+  container_name: gitlab-runner-frontend
+  service_name: gitlab-runner-frontend
+
+  # Confirm compatibility with the target GitLab version before upgrading.
+  image: docker.io/gitlab/gitlab-runner:v18.10.1
+
+  tags:
+    - frontend
+    - podman
+
+  concurrent: 1
+  cpus: 2
+  memory: 4g
+  shm_size_bytes: 1073741824
+  pull_policy: if-not-present
+  privileged: false
+  default_job_image: docker.io/library/node:22.22.0-bookworm
+
+  allowed_images:
+    - docker.io/library/node:*
+    - mcr.microsoft.com/playwright:*
+    - docker.io/curlimages/curl:*
+
+network:
+  vpn_interface: REPLACE_WITH_VPN_INTERFACE
+  vpn_dns: ""
+  use_host_network_for_runner_manager: true
+
+tls:
+  private_ca_enabled: false
+  private_ca_source: ""
+
+frontend:
+  package_name: art-frontend
+  node_image: docker.io/library/node:22.22.0-bookworm
+  playwright_image: mcr.microsoft.com/playwright:v1.62.0-noble
+  curl_image: docker.io/curlimages/curl:8.12.1
+  pnpm_version: 11.17.0

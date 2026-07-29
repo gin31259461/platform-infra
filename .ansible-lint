@@ -1,0 +1,4 @@
+---
+# SPEC.md requires roles/<family>/<role>, so role paths are intentional.
+skip_list:
+  - role-name[path]

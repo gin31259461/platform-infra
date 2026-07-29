@@ -1,0 +1,145 @@
+---
+- name: Validate the host operating system
+  ansible.builtin.assert:
+    that:
+      - ansible_facts.distribution == "Archlinux"
+    fail_msg: Only Arch Linux is supported.
+
+- name: Validate stack metadata and required settings
+  ansible.builtin.assert:
+    that:
+      - stack_config is defined
+      - stack_name is defined
+      - stack.type in common_supported_stack_types
+      - stack.id is match('^[a-z0-9][a-z0-9-]*$')
+      - stack.id == stack_name.split('/')[-1]
+      - stack.description | length > 0
+      - gitlab.url | length > 0
+      - gitlab.url is match('^https://')
+      - gitlab.hostname | length > 0
+      - gitlab.health_url | length > 0
+      - runner.user | length > 0
+      - runner.user is match('^[a-z_][a-z0-9_-]*$')
+      - runner.image is match('^[a-z0-9.-]+/\S+:\S+$')
+      - not runner.image.endswith(':latest')
+      - not runner.image.endswith(':alpine')
+      - runner.concurrent | int == 1
+      - runner.privileged | bool == false
+      - runner.allowed_images | length > 0
+      - runner.default_job_image is match('^[a-z0-9.-]+/\S+:\S+$')
+      - not runner.default_job_image.endswith(':latest')
+      - frontend.node_image is match('^[a-z0-9.-]+/\S+:\S+$')
+      - frontend.playwright_image is match('^[a-z0-9.-]+/\S+:\S+$')
+      - frontend.curl_image is match('^[a-z0-9.-]+/\S+:\S+$')
+      - not frontend.node_image.endswith(':latest')
+      - not frontend.playwright_image.endswith(':latest')
+      - not frontend.curl_image.endswith(':latest')
+      - network.use_host_network_for_runner_manager | bool
+    fail_msg: Stack configuration is invalid or violates the security baseline.
+
+- name: Validate every allowed image pattern is registry-qualified
+  ansible.builtin.assert:
+    that:
+      - item is match('^[a-z0-9.-]+/\S+:\S+$')
+      - not item.endswith(':latest')
+  loop: "{{ runner.allowed_images }}"
+
+- name: Check cgroup v2
+  ansible.builtin.stat:
+    path: /sys/fs/cgroup/cgroup.controllers
+  register: cgroup_v2
+
+- name: Require cgroup v2
+  ansible.builtin.assert:
+    that:
+      - cgroup_v2.stat.exists
+    fail_msg: cgroup v2 is required.
+
+- name: Check private CA source
+  ansible.builtin.stat:
+    path: "{{ tls.private_ca_source }}"
+  register: preflight_private_ca_source
+  when: tls.private_ca_enabled | bool
+
+- name: Validate private CA source
+  ansible.builtin.assert:
+    that:
+      - tls.private_ca_source | length > 0
+      - preflight_private_ca_source.stat.exists
+      - preflight_private_ca_source.stat.isreg
+      - not tls.private_ca_source.endswith('.key')
+      - not tls.private_ca_source.endswith('.pem.key')
+    fail_msg: A readable public CA certificate is required; private keys are not accepted.
+  when: tls.private_ca_enabled | bool
+
+- name: Verify the configured VPN interface exists
+  ansible.builtin.command:
+    argv:
+      - ip
+      - link
+      - show
+      - "{{ network.vpn_interface }}"
+  changed_when: false
+
+- name: Verify the GitLab hostname resolves
+  ansible.builtin.command:
+    argv:
+      - getent
+      - hosts
+      - "{{ gitlab.hostname }}"
+  changed_when: false
+
+- name: Verify GitLab HTTPS is reachable from the host
+  ansible.builtin.uri:
+    url: "{{ gitlab.health_url }}"
+    method: GET
+    follow_redirects: all
+    return_content: false
+    timeout: 30
+    validate_certs: true
+    ca_path: "{{ tls.private_ca_source if tls.private_ca_enabled | bool else omit }}"
+    status_code: 200
+
+- name: Check stack configuration for embedded secrets
+  ansible.builtin.command:
+    argv:
+      - grep
+      - --extended-regexp
+      - --ignore-case
+      - '^[[:space:]]*(token|runner_token|registration_token|vpn_private_key|private_key)[[:space:]]*:'
+      - "{{ stack_config }}"
+  register: embedded_secret
+  changed_when: false
+  failed_when: embedded_secret.rc == 0 or embedded_secret.rc > 1
+
+- name: Find other local stack configurations
+  ansible.builtin.find:
+    paths: "{{ playbook_dir }}/../stacks"
+    patterns: config.yml
+    recurse: true
+    file_type: file
+  register: configured_stacks
+  when: not common_allow_shared_runner_user | bool
+
+- name: Read other local stack configurations
+  ansible.builtin.slurp:
+    src: "{{ item.path }}"
+  loop: "{{ configured_stacks.files | default([]) }}"
+  when:
+    - not common_allow_shared_runner_user | bool
+    - item.path != stack_config
+  register: other_stack_configs
+  no_log: true
+
+- name: Prevent runner user reuse across configured stacks
+  ansible.builtin.assert:
+    that:
+      - >-
+        ((item.content | b64decode | from_yaml).runner.user | default(''))
+        != runner.user
+    fail_msg: "Runner user {{ runner.user }} is already used by another configured stack."
+  loop: "{{ other_stack_configs.results | default([]) }}"
+  when:
+    - not common_allow_shared_runner_user | bool
+    - not item.skipped | default(false)
+  no_log: true

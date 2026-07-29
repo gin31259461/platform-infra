@@ -1,0 +1,3 @@
+---
+common_network_connect_timeout_seconds: 10
+common_network_max_time_seconds: 30

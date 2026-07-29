@@ -1,0 +1,79 @@
+---
+- name: Wait for the Runner manager service to become active
+  ansible.builtin.command:
+    argv:
+      - runuser
+      - --user
+      - "{{ runner.user }}"
+      - --
+      - env
+      - "XDG_RUNTIME_DIR=/run/user/{{ runner_uid }}"
+      - "DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/{{ runner_uid }}/bus"
+      - systemctl
+      - --user
+      - is-active
+      - "{{ runner.service_name }}.service"
+  args:
+    chdir: "/home/{{ runner.user }}"
+  register: runner_service_active
+  changed_when: false
+  retries: "{{ gitlab_runner_start_retries }}"
+  delay: "{{ gitlab_runner_start_delay_seconds }}"
+  until: runner_service_active.stdout == "active"
+
+- name: Inspect the Runner manager container
+  ansible.builtin.command:
+    argv:
+      - runuser
+      - --user
+      - "{{ runner.user }}"
+      - --
+      - env
+      - "XDG_RUNTIME_DIR=/run/user/{{ runner_uid }}"
+      - podman
+      - inspect
+      - "{{ runner.container_name }}"
+  args:
+    chdir: "/home/{{ runner.user }}"
+  register: runner_container_inspect
+  changed_when: false
+
+- name: Store Runner manager inspection data
+  ansible.builtin.set_fact:
+    runner_container_data: "{{ (runner_container_inspect.stdout | from_json)[0] }}"
+
+- name: Validate the Runner manager security boundary
+  ansible.builtin.assert:
+    that:
+      - runner_container_data.State.Running | bool
+      - runner_container_data.Config.Image == runner.image
+      - >-
+        (runner_container_data.HostConfig.Binds | default([]) |
+        select('search', ('/run/user/' ~ (runner_uid | string) ~
+        '/podman/podman.sock:/run/podman/podman.sock') | regex_escape) |
+        list | length) == 1
+      - >-
+        (runner_container_data.HostConfig.Binds | default([]) |
+        select('search', ('/home/' ~ runner.user ~
+        '/gitlab-runner/config:/etc/gitlab-runner') | regex_escape) |
+        list | length) == 1
+      - not (runner_container_data.HostConfig.Privileged | default(false) | bool)
+    fail_msg: Runner manager container does not match the required rootless security boundary.
+
+- name: Verify the Runner binary is usable
+  ansible.builtin.command:
+    argv:
+      - runuser
+      - --user
+      - "{{ runner.user }}"
+      - --
+      - env
+      - "XDG_RUNTIME_DIR=/run/user/{{ runner_uid }}"
+      - podman
+      - exec
+      - "{{ runner.container_name }}"
+      - gitlab-runner
+      - --version
+  args:
+    chdir: "/home/{{ runner.user }}"
+  changed_when: false

@@ -1,0 +1,17 @@
+---
+stages:
+  - verify
+
+default:
+  tags:
+    - frontend
+    - podman
+
+runner-smoke-test:
+  stage: verify
+  image: docker.io/library/node:22.22.0-bookworm
+  script:
+    - echo "Runner is working"
+    - node --version
+    - uname -a
+    - cat /etc/os-release

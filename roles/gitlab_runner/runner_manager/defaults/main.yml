@@ -1,0 +1,4 @@
+---
+gitlab_runner_timezone: Asia/Taipei
+gitlab_runner_quadlet_mode: "0644"
+gitlab_runner_config_file_mode: "0600"

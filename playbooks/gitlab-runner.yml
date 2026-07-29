@@ -1,0 +1,35 @@
+---
+- name: Configure GitLab Runner stack
+  hosts: localhost
+
+  vars_files:
+    - "{{ stack_config }}"
+
+  roles:
+    - role: common/preflight
+      become: false
+      tags: [preflight]
+    - role: common/arch_packages
+      become: true
+      tags: [packages]
+    - role: gitlab_runner/runner_user
+      become: true
+      tags: [runner_user]
+    - role: common/systemd_user
+      become: true
+      tags: [systemd_user]
+    - role: common/rootless_podman
+      become: true
+      tags: [podman]
+    - role: common/network_validation
+      become: true
+      tags: [network]
+    - role: common/tls_validation
+      become: true
+      tags: [tls]
+    - role: gitlab_runner/runner_manager
+      become: true
+      tags: [runner_manager]
+    - role: gitlab_runner/runner_validation
+      become: true
+      tags: [runner_validation]

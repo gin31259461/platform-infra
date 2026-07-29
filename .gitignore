@@ -1,0 +1,13 @@
+stacks/**/config.yml
+stacks/**/files/certs/*
+!stacks/**/files/certs/.gitkeep
+
+secrets/
+*.token
+*.key
+*.pem
+*.vault-password
+.env
+.env.*
+*.retry
+.cache/

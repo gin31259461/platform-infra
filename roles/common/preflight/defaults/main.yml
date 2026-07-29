@@ -1,0 +1,4 @@
+---
+common_supported_stack_types:
+  - gitlab-runner
+common_allow_shared_runner_user: false
