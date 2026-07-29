@@ -6,7 +6,8 @@
 4. Run bootstrap.
 5. Reboot so the running kernel matches the installed Arch kernel modules.
 6. Reconnect the manually managed VPN.
-7. Load `bridge`, `veth`, and `br_netfilter`, then run check and install.
+7. Run check and install. Preflight verifies the modules, and installation
+   persists and loads them automatically.
 8. Create a new Project Runner in the GitLab UI.
 9. Register with the new authentication token and immediately unset it.
 10. Run local verification.

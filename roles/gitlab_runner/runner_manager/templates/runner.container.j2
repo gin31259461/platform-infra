@@ -9,6 +9,9 @@ ContainerName={{ runner.container_name }}
 {% if network.use_host_network_for_runner_manager | bool %}
 Network=host
 {% endif %}
+{% if network.vpn_dns | length > 0 %}
+DNS={{ network.vpn_dns }}
+{% endif %}
 Volume=/home/{{ runner.user }}/gitlab-runner/config:/etc/gitlab-runner
 Volume=/run/user/{{ runner_uid }}/podman/podman.sock:/run/podman/podman.sock
 Environment=TZ={{ gitlab_runner_timezone }}

@@ -38,6 +38,8 @@ runner:
 
 network:
   vpn_interface: REPLACE_WITH_VPN_INTERFACE
+  # Set this to the VPN resolver IP when host DNS changes during VPN startup.
+  # For Tailscale DNS on this host, use "100.100.100.100".
   vpn_dns: ""
   use_host_network_for_runner_manager: true
 

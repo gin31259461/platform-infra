@@ -1,2 +1,3 @@
 ---
 common_podman_smoke_image: docker.io/library/alpine:3.22.1
+common_podman_modules_load_path: /etc/modules-load.d/platform-infra-podman.conf

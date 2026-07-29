@@ -43,6 +43,10 @@ cp stacks/gitlab-runners/frontend/config.example.yml \
 $EDITOR stacks/gitlab-runners/frontend/config.yml
 ```
 
+When the VPN replaces host DNS during startup, set `network.vpn_dns` to the
+VPN resolver IP. For this host's Tailscale DNS, use `100.100.100.100`.
+Installation applies it to both the Runner manager and CI job containers.
+
 Bootstrap performs a full Arch Linux package upgrade. Reboot before installing
 the stack so the running kernel matches the installed modules:
 
@@ -51,12 +55,12 @@ sudo make bootstrap
 sudo reboot
 ```
 
-After reboot, reconnect the manually managed VPN, return to the repository,
-and load the networking modules needed by rootless Podman job networks:
+After reboot, reconnect the manually managed VPN and return to the repository.
+The preflight check verifies that the running kernel has the required modules;
+installation persists and loads them automatically:
 
 ```sh
 cd platform-infra
-sudo modprobe bridge veth br_netfilter
 
 make check STACK=gitlab-runners/frontend
 make install STACK=gitlab-runners/frontend
@@ -79,6 +83,9 @@ Then verify the completed installation:
 make verify STACK=gitlab-runners/frontend
 make status STACK=gitlab-runners/frontend
 ```
+
+After changing `network.vpn_dns`, run `make install` again. It reconciles the
+existing Runner configuration without exposing or replacing its token.
 
 For Bash, the equivalent token input command is:
 

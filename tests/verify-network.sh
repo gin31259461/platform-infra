@@ -12,6 +12,7 @@ runner_user="$(yaml_value runner.user)"
 runner_uid="$(id -u "${runner_user}" 2>/dev/null)" ||
   die "Runner user does not exist."
 vpn_interface="$(yaml_value network.vpn_interface)"
+vpn_dns="$(yaml_value network.vpn_dns)"
 gitlab_hostname="$(yaml_value gitlab.hostname)"
 health_url="$(yaml_value gitlab.health_url)"
 curl_image="$(yaml_value frontend.curl_image)"
@@ -25,6 +26,9 @@ host_curl=(curl --fail --show-error --silent --location)
 container_curl=(
   podman run --rm --network host --pull=missing
 )
+if [[ -n ${vpn_dns} ]]; then
+  container_curl+=(--dns "${vpn_dns}")
+fi
 if [[ ${private_ca_enabled} == true ]]; then
   as_root test -f "${installed_ca}" || die "Installed private CA certificate is missing."
   host_curl+=(--cacert "${installed_ca}")

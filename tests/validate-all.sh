@@ -34,4 +34,6 @@ for path in sorted(root.glob("stacks/*/*/config.example.yml")):
     seen[user] = path
 PY
 
+"${PROJECT_ROOT}/tests/test-vpn-dns.sh"
+
 echo "All stacks are valid."

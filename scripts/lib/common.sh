@@ -34,6 +34,7 @@ as_runner_user() {
   shift 2
 
   if [[ ${EUID} -eq 0 ]]; then
+    # shellcheck disable=SC2016 # Expanded by the child shell.
     runuser --user "${runner_user}" -- sh -c '
       cd -- "$1"
       shift
@@ -43,6 +44,7 @@ as_runner_user() {
         DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/${runner_uid}/bus" \
         "$@"
   else
+    # shellcheck disable=SC2016 # Expanded by the child shell.
     sudo -u "${runner_user}" sh -c '
       cd -- "$1"
       shift

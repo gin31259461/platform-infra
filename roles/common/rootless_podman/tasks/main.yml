@@ -1,4 +1,18 @@
 ---
+- name: Persist kernel modules required by rootless Podman networks
+  ansible.builtin.copy:
+    dest: "{{ common_podman_modules_load_path }}"
+    content: "{{ platform_podman_kernel_modules | join('\n') }}\n"
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Load kernel modules required by rootless Podman networks
+  community.general.modprobe:
+    name: "{{ item }}"
+    state: present
+  loop: "{{ platform_podman_kernel_modules }}"
+
 - name: Enable and start the rootless Podman socket
   ansible.builtin.command:
     argv:

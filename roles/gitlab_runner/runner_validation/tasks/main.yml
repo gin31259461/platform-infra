@@ -57,6 +57,10 @@
         select('search', ('/home/' ~ runner.user ~
         '/gitlab-runner/config:/etc/gitlab-runner') | regex_escape) |
         list | length) == 1
+      - >-
+        network.vpn_dns | length == 0 or
+        network.vpn_dns in
+        (runner_container_data.HostConfig.Dns | default([], true))
       - not (runner_container_data.HostConfig.Privileged | default(false) | bool)
     fail_msg: Runner manager container does not match the required rootless security boundary.
 

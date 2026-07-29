@@ -5,7 +5,8 @@ Before running automation:
 1. Install Arch Linux with cgroup v2.
 2. Reboot after bootstrap or any kernel upgrade so `uname -r` has a matching
    `/usr/lib/modules/<kernel>` tree.
-3. Ensure the `bridge`, `veth`, and `br_netfilter` modules can be loaded.
+3. Ensure the running kernel provides `bridge`, `veth`, and `br_netfilter`.
+   Automation persists and loads them during stack installation.
 4. Install, configure, and connect the organization's VPN manually.
 5. Confirm the VPN interface exists and the GitLab hostname resolves.
 6. Confirm `https://<gitlab-hostname>/-/health` is reachable without `curl -k`.

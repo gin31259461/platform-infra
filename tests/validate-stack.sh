@@ -16,6 +16,7 @@ fi
 CONFIG_TO_VALIDATE="${config_to_validate}" \
 REJECT_PLACEHOLDERS="${reject_placeholders}" python - <<'PY'
 import os
+import ipaddress
 import re
 import sys
 
@@ -67,6 +68,12 @@ if require("runner.privileged") is not False:
     raise SystemExit(f"{path}: runner.privileged must be false")
 if require("network.use_host_network_for_runner_manager") is not True:
     raise SystemExit(f"{path}: Runner manager must use host networking")
+vpn_dns = require("network.vpn_dns", str)
+if vpn_dns:
+    try:
+        ipaddress.ip_address(vpn_dns)
+    except ValueError as error:
+        raise SystemExit(f"{path}: network.vpn_dns must be an IP address") from error
 
 image_pattern = re.compile(r"^[a-z0-9.-]+/[^\s]+:[^\s]+$")
 fixed_images = [

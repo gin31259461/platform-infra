@@ -16,6 +16,19 @@
     group: "{{ runner.user }}"
     mode: "{{ gitlab_runner_config_file_mode }}"
 
+- name: Reconcile VPN DNS in registered Runner job configuration
+  ansible.builtin.script:
+    cmd: >-
+      {{ playbook_dir }}/../scripts/reconcile-runner-config.py
+      --config /home/{{ runner.user }}/gitlab-runner/config/config.toml
+      --dns {{ network.vpn_dns | quote }}
+    executable: /usr/bin/python
+  register: runner_dns_reconciliation
+  changed_when: runner_dns_reconciliation.stdout | trim == "changed"
+  when: network.vpn_dns | length > 0
+  notify:
+    - Restart runner manager after configuration change
+
 - name: Install the Runner manager Quadlet
   ansible.builtin.template:
     src: runner.container.j2

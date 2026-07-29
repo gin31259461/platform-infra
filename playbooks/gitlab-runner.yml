@@ -5,6 +5,12 @@
   vars_files:
     - "{{ stack_config }}"
 
+  vars:
+    platform_podman_kernel_modules:
+      - bridge
+      - veth
+      - br_netfilter
+
   roles:
     - role: common/preflight
       become: false

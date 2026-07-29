@@ -14,6 +14,7 @@ runner_uid="$(id -u "${runner_user}" 2>/dev/null)" ||
 service_name="$(yaml_value runner.service_name)"
 container_name="$(yaml_value runner.container_name)"
 runner_image="$(yaml_value runner.image)"
+vpn_dns="$(yaml_value network.vpn_dns)"
 config_path="/home/${runner_user}/gitlab-runner/config/config.toml"
 socket_source="/run/user/${runner_uid}/podman/podman.sock"
 socket_destination="/run/podman/podman.sock"
@@ -33,6 +34,20 @@ actual_image="$(as_runner_user "${runner_user}" "${runner_uid}" \
 network_mode="$(as_runner_user "${runner_user}" "${runner_uid}" \
   podman inspect --format '{{.HostConfig.NetworkMode}}' "${container_name}")"
 [[ ${network_mode} == host ]] || die "Runner manager is not using host networking."
+
+if [[ -n ${vpn_dns} ]]; then
+  manager_dns="$(as_runner_user "${runner_user}" "${runner_uid}" \
+    podman inspect --format '{{range .HostConfig.Dns}}{{println .}}{{end}}' \
+    "${container_name}")"
+  grep -Fxq "${vpn_dns}" <<<"${manager_dns}" ||
+    die "Runner manager does not use the configured VPN DNS."
+
+  manager_resolv_conf="$(as_runner_user "${runner_user}" "${runner_uid}" \
+    podman exec "${container_name}" cat /etc/resolv.conf)"
+  grep -Eq "^[[:space:]]*nameserver[[:space:]]+${vpn_dns//./\\.}([[:space:]]|$)" \
+    <<<"${manager_resolv_conf}" ||
+    die "Runner manager resolv.conf does not contain the configured VPN DNS."
+fi
 
 mounts="$(as_runner_user "${runner_user}" "${runner_uid}" \
   podman inspect \
@@ -79,6 +94,9 @@ for volume in docker.get("volumes", []):
         sys.exit("A container runtime socket is exposed to CI jobs.")
 if "FF_NETWORK_PER_BUILD=1" not in runner.get("environment", []):
     sys.exit("Per-build networking is not enabled.")
+expected_dns = stack_config["network"].get("vpn_dns", "")
+if expected_dns and expected_dns not in docker.get("dns", []):
+    sys.exit("Runner job containers do not use the configured VPN DNS.")
 PY
 
 as_runner_user "${runner_user}" "${runner_uid}" \
