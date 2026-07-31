@@ -48,7 +48,7 @@ tls:
   private_ca_source: ""
 
 frontend:
-  package_name: art-frontend
+  package_name: REPLACE_WITH_PROJECT_NAME
   node_image: docker.io/library/node:22.22.0-bookworm
   playwright_image: mcr.microsoft.com/playwright:v1.62.0-noble
   curl_image: docker.io/curlimages/curl:8.12.1

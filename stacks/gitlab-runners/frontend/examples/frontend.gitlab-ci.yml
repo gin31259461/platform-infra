@@ -19,7 +19,7 @@ workflow:
     - if: "$CI_COMMIT_BRANCH"
 
 variables:
-  PACKAGE_NAME: art-frontend
+  PACKAGE_NAME: REPLACE_WITH_PROJECT_NAME
   PNPM_STORE_DIR: .pnpm-store
   PNPM_VERSION: 11.17.0
 
