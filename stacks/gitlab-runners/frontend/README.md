@@ -48,7 +48,7 @@ sudo reboot
 After reboot:
 
 ```sh
-cd platform-infra
+cd gitlab-runner-platform
 
 make check STACK=gitlab-runners/frontend
 make install STACK=gitlab-runners/frontend

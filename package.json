@@ -1,0 +1,30 @@
+{
+  "name": "gitlab-runner-platform",
+  "version": "0.1.0",
+  "private": true,
+  "packageManager": "pnpm@10.34.5",
+  "engines": {
+    "node": "22.17.x"
+  },
+  "scripts": {
+    "dev": "pnpm --filter @gitlab-runner-platform/web dev",
+    "web:build": "pnpm --filter @gitlab-runner-platform/web build",
+    "web:lint": "pnpm --filter @gitlab-runner-platform/web lint",
+    "web:typecheck": "pnpm --filter @gitlab-runner-platform/web typecheck",
+    "workspace:test": "pnpm --filter './apps/**' --filter './packages/**' --recursive --if-present test",
+    "workspace:typecheck": "pnpm --filter './apps/**' --filter './packages/**' --recursive --if-present typecheck",
+    "db:generate": "pnpm --filter @gitlab-runner-platform/web db:generate",
+    "db:migrate": "pnpm --filter @gitlab-runner-platform/web db:migrate",
+    "db:deploy": "pnpm --filter @gitlab-runner-platform/web db:deploy",
+    "db:status": "pnpm --filter @gitlab-runner-platform/web db:status",
+    "db:summary": "pnpm --filter @gitlab-runner-platform/web db:summary",
+    "db:validate": "pnpm --filter @gitlab-runner-platform/web db:validate",
+    "host:enroll": "pnpm --filter @gitlab-runner-platform/web host:enroll",
+    "host:bootstrap-agent": "pnpm --filter @gitlab-runner-platform/web host:bootstrap-agent",
+    "host:issue-credential": "pnpm --filter @gitlab-runner-platform/web host:issue-credential",
+    "gitlab:discover": "pnpm --filter @gitlab-runner-platform/web gitlab:discover",
+    "gitlab:import-discovery": "pnpm --filter @gitlab-runner-platform/web gitlab:import-discovery",
+    "gitlab:sync": "pnpm --filter @gitlab-runner-platform/web gitlab:sync",
+    "validate:web": "pnpm db:generate && pnpm workspace:typecheck && pnpm workspace:test && pnpm web:lint && pnpm web:build"
+  }
+}

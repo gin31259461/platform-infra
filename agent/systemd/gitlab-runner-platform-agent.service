@@ -1,0 +1,16 @@
+[Unit]
+Description=GitLab Runner Platform read-only Host Agent
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python %h/.local/lib/gitlab-runner-platform/gitlab_runner_agent.py
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=read-only
+ProtectSystem=strict
+ReadWritePaths=%h/.local/state/gitlab-runner-platform
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+RestrictSUIDSGID=true
+UMask=0077

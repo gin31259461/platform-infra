@@ -1,0 +1,12 @@
+[Unit]
+Description=Report GitLab Runner health every 30 seconds
+
+[Timer]
+OnBootSec=30s
+OnUnitActiveSec=30s
+RandomizedDelaySec=5s
+Persistent=true
+Unit=gitlab-runner-platform-agent.service
+
+[Install]
+WantedBy=timers.target

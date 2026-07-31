@@ -1,11 +1,11 @@
 SHELL := /usr/bin/env bash
 .DEFAULT_GOAL := help
 
-.PHONY: help bootstrap check install register verify status uninstall idempotency validate validate-all lint
+.PHONY: help bootstrap check install install-agent register verify status uninstall idempotency validate validate-all lint test-agent
 
 help:
 	@echo "Usage: make <target> STACK=gitlab-runners/frontend"
-	@echo "Targets: bootstrap check install register verify status uninstall idempotency validate validate-all lint"
+	@echo "Targets: bootstrap check install install-agent register verify status uninstall idempotency validate validate-all lint test-agent"
 
 bootstrap:
 	sudo ./scripts/bootstrap.sh
@@ -15,6 +15,9 @@ check:
 
 install:
 	./scripts/install.sh "$(STACK)"
+
+install-agent:
+	./scripts/install-agent.sh
 
 register:
 	./scripts/register-runner.sh "$(STACK)"
@@ -40,3 +43,5 @@ validate-all:
 lint:
 	./tests/lint.sh
 
+test-agent:
+	python -m unittest discover -s agent/tests -v

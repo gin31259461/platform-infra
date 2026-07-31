@@ -1,0 +1,119 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum PlatformRole {
+  VIEWER
+  OPERATOR
+  ADMINISTRATOR
+  AUDITOR
+}
+
+enum ObservationSource {
+  HOST_AGENT
+  GITLAB
+}
+
+model User {
+  id              String           @id @default(cuid())
+  externalSubject String           @unique
+  displayName     String
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+  roles           RoleAssignment[]
+}
+
+model RoleAssignment {
+  id        String       @id @default(cuid())
+  userId    String
+  role      PlatformRole
+  createdAt DateTime     @default(now())
+  user      User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, role])
+}
+
+model RunnerHost {
+  id               String            @id
+  displayName      String
+  enrolledAt      DateTime
+  revokedAt       DateTime?
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+  stacks           RunnerStack[]
+  agentCredentials AgentCredential[]
+}
+
+model AgentCredential {
+  id            String       @id
+  runnerHostId  String
+  runnerStackId String?
+  tokenDigest   String
+  createdAt     DateTime     @default(now())
+  expiresAt     DateTime?
+  revokedAt     DateTime?
+  lastUsedAt    DateTime?
+  runnerHost    RunnerHost   @relation(fields: [runnerHostId], references: [id], onDelete: Cascade)
+  runnerStack   RunnerStack? @relation(fields: [runnerStackId], references: [id], onDelete: Cascade)
+
+  @@index([runnerHostId])
+  @@index([runnerStackId])
+}
+
+model RunnerStack {
+  id               String            @id
+  canonicalName    String
+  workload         String
+  hostId           String
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+  host             RunnerHost        @relation(fields: [hostId], references: [id], onDelete: Restrict)
+  runnerRecord     RunnerRecordRef?
+  observations     Observation[]
+  agentCredentials AgentCredential[]
+
+  @@unique([hostId, canonicalName])
+}
+
+model RunnerRecordRef {
+  id             String      @id @default(cuid())
+  runnerStackId  String      @unique
+  gitlabRunnerId String      @unique
+  projectPath    String
+  runnerStack    RunnerStack @relation(fields: [runnerStackId], references: [id], onDelete: Cascade)
+}
+
+model Observation {
+  id            String            @id @default(cuid())
+  runnerStackId String
+  source        ObservationSource
+  deliveryId    String?
+  deliveryDigest String?
+  schemaVersion String
+  observedAt    DateTime
+  payload       Json
+  createdAt     DateTime          @default(now())
+  runnerStack   RunnerStack       @relation(fields: [runnerStackId], references: [id], onDelete: Cascade)
+
+  @@index([runnerStackId, source, observedAt])
+  @@unique([runnerStackId, source, deliveryId])
+}
+
+model AuditEvent {
+  id            String   @id @default(cuid())
+  correlationId String
+  actorId       String
+  eventType     String
+  targetType    String
+  targetId      String
+  payload       Json
+  occurredAt    DateTime @default(now())
+
+  @@index([occurredAt])
+  @@index([correlationId])
+}

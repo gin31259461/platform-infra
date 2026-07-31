@@ -1,47 +1,41 @@
-# AGENTS Instructions
+# AGENTS.md
 
-## Project overview
+## Project
 
-`platform-infra` is an infrastructure automation monorepo for self-managed
-Linux hosts. Its stacks install project-scoped frontend and .NET GitLab
-Runners on Arch Linux.
+`gitlab-runner-platform` deploys and observes project-scoped frontend and .NET
+GitLab Runners on Arch Linux. Runner managers are rootless Podman containers
+managed by systemd user Quadlets. Managers use host networking to reach GitLab
+through an external VPN; CI jobs use isolated per-build networks.
 
-The Runner manager is a rootless Podman container managed by a systemd user
-Quadlet. GitLab Runner uses the Docker executor protocol against that user's
-Podman socket. The manager uses host networking to reach GitLab over a
-manually managed VPN; CI job containers use isolated per-build networks.
+The monorepo also contains a read-only Next.js Control Plane, PostgreSQL
+observation persistence, a standard-library Python Host Agent, and a read-only
+GitLab connector. Treat code and tests as current truth; [SPEC.md](SPEC.md)
+describes target behavior and may include unimplemented capabilities.
 
-This file applies to the entire repository. There are currently no nested
-`AGENTS.md` files.
+This file applies to the entire repository. There are no nested `AGENTS.md`
+files.
 
 ## Read first
 
-- Human setup and operations: `README.md`
-- Trust boundaries: `docs/security.md`
-- Component flow: `docs/architecture.md`
-- Common failures: `docs/troubleshooting.md`
-- Stack conventions: `docs/adding-a-stack.md`
-- Runner stack conventions: `docs/adding-a-runner-stack.md`
-
-The repository has no active `SPEC.md`; treat executable code, tests, and the
-documents above as the source of truth.
+- Human setup and operations: [README.md](README.md)
+- Documentation map: [docs/README.md](docs/README.md)
+- Architecture and security: [docs/architecture.md](docs/architecture.md),
+  [docs/security.md](docs/security.md)
+- Domain and product behavior: [CONTEXT.md](CONTEXT.md), [SPEC.md](SPEC.md)
+- Contribution lifecycle: [docs/development-workflow.md](docs/development-workflow.md)
+- Common failures: [docs/troubleshooting.md](docs/troubleshooting.md)
 
 ## Repository map
 
-- `playbooks/gitlab-runner.yml`: ordered orchestration for Runner stacks
-- `roles/common/`: shared host, systemd, Podman, network, and TLS behavior
-- `roles/gitlab_runner/`: Runner user, manager, and runtime validation
-- `stacks/<type>/<workload>/`: workload configuration, examples, and smoke CI
-- `scripts/`: implementations behind Make targets
-- `scripts/lib/`: common privilege and stack-resolution helpers
-- `tests/`: lint, schema, regression, idempotency, and live verification
-- `inventory/localhost.yml`: local-only Ansible inventory
-- `.gitlab-ci.yml`: repository lint and validation pipeline
+- `playbooks/`, `roles/`: Ansible orchestration and shared host behavior.
+- `stacks/gitlab-runners/`: supported frontend and .NET stack configuration.
+- `apps/web/`: Next.js UI, tRPC API, Prisma persistence, Agent ingestion, and
+  GitLab connector.
+- `agent/`: read-only Python Host Agent and systemd user units.
+- `packages/contracts/`, `packages/domain/`: boundary schemas and domain rules.
+- `scripts/`, `tests/`: supported workflows, helpers, lint, and verification.
 
-The supported stacks are `gitlab-runners/frontend` and
-`gitlab-runners/dotnet`.
-
-## Commands
+## Setup and commands
 
 Use canonical stack names, never caller-supplied filesystem paths:
 
@@ -49,15 +43,32 @@ Use canonical stack names, never caller-supplied filesystem paths:
 STACK=gitlab-runners/frontend
 ```
 
-Fast, non-destructive repository checks:
+For Node work, use the checked-in nvm and pnpm pins:
 
 ```bash
-make validate STACK="${STACK}"
-make validate-all
-make lint
+nvm install
+nvm use
+corepack enable
+pnpm install --frozen-lockfile
 ```
 
-Live diagnostic checks on a configured Arch host:
+Use pnpm for Node workflows and Make for infrastructure or Host Agent
+workflows.
+
+| Change | Required checks |
+| --- | --- |
+| One stack config | `make validate STACK="${STACK}"`, then `make validate-all` |
+| Web, contracts, or domain | smallest package test, then `pnpm validate:web` |
+| Host Agent | `make test-agent`, then `pnpm validate:web` |
+| DNS or Runner config | `./tests/test-vpn-dns.sh`, then `make validate-all` |
+| Shell, YAML, Ansible, or security boundary | `make lint`, then `make validate-all` |
+
+Always run `git diff --check` before handoff. Add a focused regression test for
+every reproducible bug.
+
+## Authorization and safety
+
+Read-only diagnostics are safe when relevant:
 
 ```bash
 make check STACK="${STACK}"
@@ -65,225 +76,111 @@ make status STACK="${STACK}"
 make verify STACK="${STACK}"
 ```
 
-Host-mutating workflows:
+The following mutate the host or external state and require explicit user
+authorization:
 
 ```bash
 make bootstrap
 make install STACK="${STACK}"
+make install-agent STACK="${STACK}"
 make register STACK="${STACK}"
 make idempotency STACK="${STACK}"
 make uninstall STACK="${STACK}"
+pnpm host:bootstrap-agent --stack "${STACK}"
 ```
 
-Do not run host-mutating commands for a review, explanation, or diagnosis-only
-request. `make bootstrap` performs a full Arch upgrade. `make install` changes
-packages, users, subordinate IDs, kernel-module configuration, user services,
-and containers. Registration changes local Runner configuration and contacts
-GitLab. Obtain appropriate user authorization before these operations.
+- `make bootstrap` performs a full Arch upgrade.
+- Registration contacts GitLab and changes local token-bearing configuration.
+- Agent bootstrap changes PostgreSQL credentials and the Runner user's files
+  and systemd timer.
+- Credential issuance and discovery import commands mutate staging inventory
+  and require the same explicit authorization.
+- Purge permanently removes the Runner user and data; normal uninstall keeps
+  configuration and cache.
+- Never work around sudo or ask the user to expose a password.
+- The VPN is external: validate it, but never configure, reconnect, or store
+  its credentials.
+- Never automatically unregister or delete a GitLab Runner record.
 
-`./scripts/uninstall.sh <stack> --purge` is destructive and permanently
-removes the dedicated local user and Runner data. Normal uninstall preserves
-configuration and cache.
+## Secrets
 
-## Local setup
+Never commit, print, log, or expose:
 
-The local stack config is deliberately untracked:
+- `GITLAB_RUNNER_TOKEN` or installed `config.toml` contents;
+- real `stacks/**/config.yml` or `.env` files;
+- files under `secrets/`;
+- VPN credentials, private keys, or Host Agent secrets.
 
-```bash
-cp stacks/gitlab-runners/frontend/config.example.yml \
-  stacks/gitlab-runners/frontend/config.yml
-```
+Registration tokens and connector credentials must continue to use stdin. Do
+not move them into arguments, Ansible variables, environment files, temporary
+files, or shell history. Never enable shell tracing in token-handling code.
 
-Never commit or print the real `config.yml` when it contains environment
-details. Replace every `REPLACE_*` value before live checks.
+Do not disable TLS verification, use `curl -k`, mount the Podman socket into
+jobs, enable privileged jobs, or activate a Docker daemon. The only plaintext
+Control Plane exception is explicit same-host staging on literal `127.0.0.1`
+or `::1`; every cross-host connection requires verified HTTPS.
 
-Bootstrap installs `ansible-core`, Git, Python, and the collections pinned in
-`requirements.yml`. Runtime package installation is handled by the
-`common/arch_packages` role.
+## Code conventions
 
-The VPN is an external prerequisite. Automation may validate its interface,
-DNS, and HTTPS path, but must not create, configure, reconnect, or store
-credentials for it.
+### Shell
 
-## Testing expectations
-
-Run the smallest relevant check first, then the broader suite.
-
-### Configuration or stack changes
-
-```bash
-make validate STACK=gitlab-runners/frontend
-make validate-all
-```
-
-`tests/validate-stack.sh` validates the local `config.yml` when present;
-otherwise it validates `config.example.yml`. It also runs Ansible syntax
-checking when `ansible-playbook` is installed.
-
-### DNS or Runner configuration changes
-
-```bash
-./tests/test-vpn-dns.sh
-make validate-all
-```
-
-The DNS regression test renders the real Quadlet template and verifies that
-Runner TOML reconciliation preserves its token and `0600` permissions.
-
-### Shell, YAML, Ansible, or security-boundary changes
-
-```bash
-make lint
-make validate-all
-```
-
-`make lint` requires:
-
-- ShellCheck
-- yamllint
-- ansible-lint
-- ripgrep
-
-It also checks for leaked Runner tokens and private keys.
-
-### Live host changes
-
-When authorized and the supported Arch host is available:
-
-```bash
-make check STACK=gitlab-runners/frontend
-make install STACK=gitlab-runners/frontend
-make verify STACK=gitlab-runners/frontend
-make idempotency STACK=gitlab-runners/frontend
-```
-
-Live commands require the VPN, Podman, systemd user manager, and often
-interactive sudo. Never work around a password prompt or ask the user to
-expose a password.
-
-Before handing off a change, run `git diff --check`. Add or update a focused
-regression test for every reproducible bug.
-
-## Shell conventions
-
-- Every Bash script starts with `#!/usr/bin/env bash` and
-  `set -Eeuo pipefail`.
+- Start Bash scripts with `#!/usr/bin/env bash` and `set -Eeuo pipefail`.
 - Quote expansions and use arrays for constructed commands.
-- Resolve stack names through `scripts/lib/stack.sh`; do not accept arbitrary
-  paths or weaken its traversal checks.
-- Use `as_root` and `as_runner_user` from `scripts/lib/common.sh` instead of
-  duplicating privilege logic.
-- Commands executed through `runuser` must set `chdir` to the Runner home.
-  `tests/lint.sh` enforces this for Ansible command tasks.
-- Never enable shell tracing in token-handling code.
+- Resolve stacks through `scripts/lib/stack.sh`.
+- Reuse `as_root` and `as_runner_user` from `scripts/lib/common.sh`.
 - Keep destructive targets explicit and validated.
 
-## Ansible and YAML conventions
+### Ansible and YAML
 
-- Use fully qualified collection names such as
-  `ansible.builtin.command`.
-- Prefer module parameters and `argv` over shell command strings.
-- Use `shell` only when pipelines or shell language are genuinely required.
-- Add accurate `changed_when`, `failed_when`, and `when` conditions.
+- Use fully qualified collection names and module parameters or `argv`.
+- Use `shell` only for genuine shell language; set accurate `changed_when`,
+  `failed_when`, and `when` conditions.
 - Preserve idempotency; a second install must report `changed=0`.
-- Keep privilege escalation at the role boundary in the playbook. Preflight
-  remains unprivileged.
-- Shared behavior belongs in `roles/common` or `roles/gitlab_runner`; stack
-  directories contain workload-specific values and examples.
-- Use two-space YAML indentation. The lint limit is 140 characters.
-- Preserve the two-level role layout required by this repository; the
-  intentional `role-name[path]` exception is in `.ansible-lint`.
+- Keep shared behavior in `roles/common` or `roles/gitlab_runner`; stacks hold
+  workload values and examples.
+- Use two-space YAML indentation and a 140-character line limit.
+- Quadlet-generated services are not enabled directly. Put
+  `WantedBy=default.target` in the `.container` file, then reload and start or
+  try-restart the service.
 
-Quadlet files generate transient systemd services. Do not run
-`systemctl --user enable` on the generated Runner service. Put
-`WantedBy=default.target` in the `.container` file and use `start` or
-`try-restart` after `daemon-reload`.
+### Python and data boundaries
 
-## Python conventions
+- Prefer the standard library unless the runtime already guarantees a
+  dependency.
+- Parse YAML/TOML structurally when correctness or secret preservation matters.
+- Never read Runner token-bearing content in the Host Agent or open the Podman
+  socket.
+- Preserve unknown values as unknown; do not fabricate zero jobs, empty Drift,
+  or a version.
+- Preserve restrictive ownership and modes during atomic writes.
 
-- Prefer the standard library unless an existing runtime dependency is
-  already guaranteed.
-- Parse YAML/TOML structurally when correctness or secret preservation
-  matters.
-- When editing token-bearing files, never print file contents or register them
-  in Ansible output.
-- Preserve file ownership and restrictive permissions during atomic writes.
-- Keep helper output minimal and machine-readable when Ansible uses it for
-  `changed_when`.
+### Stacks and images
 
-## Stack and image conventions
+- Stack names match `^[a-z0-9][a-z0-9-]*/[a-z0-9][a-z0-9-]*$`.
+- Every stack has `README.md` and `config.example.yml`.
+- Runner stacks use unique users, services, containers, tokens, caches, tags,
+  and trust boundaries.
+- Keep concurrency `1`, privileged mode off, manager host networking on,
+  per-build job networking on, and job volumes limited to `/cache`.
+- Use full registry-qualified images; pin fixed images and keep wildcard
+  allowlists repository-scoped.
 
-Stack names must match:
+See [Adding a Runner stack](docs/adding-a-runner-stack.md) for detailed rules.
 
-```text
-^[a-z0-9][a-z0-9-]*/[a-z0-9][a-z0-9-]*$
-```
+## Documentation and commits
 
-Every stack requires a `README.md` and `config.example.yml`. New Runner stacks
-must use a unique Linux user, service name, container name, token, cache, tags,
-and trust boundary. Service containers require a narrow `allowed_services`
-repository allowlist.
+Update the nearest guide under `docs/` when architecture, security, setup,
+rollback, or troubleshooting changes. Keep README as the concise human entry
+point and `docs/README.md` as the index. Examples use placeholder hosts and no
+real environment data.
 
-Keep these security defaults unless an explicit review approves a change:
-
-- `runner.concurrent: 1`
-- `runner.privileged: false`
-- manager host networking enabled
-- per-build job networking enabled
-- job volumes limited to `/cache`
-- Podman socket mounted only into the manager
-
-Use full registry-qualified image references. Pin fixed images to explicit
-versions; do not use `latest` or generic `alpine`. Keep wildcard entries
-limited to the explicit `allowed_images` repositories.
-
-## Secrets and safety
-
-Never commit, log, echo, or expose:
-
-- `GITLAB_RUNNER_TOKEN`
-- the installed token-bearing `config.toml`
-- VPN credentials or private keys
-- real `stacks/**/config.yml`
-- files under `secrets/`
-- `.env` files
-
-Registration must continue to stream `GITLAB_RUNNER_TOKEN` over standard
-input. Do not move it into Podman arguments, Ansible variables, temporary
-files, or shell history.
-
-Do not use `curl -k`, disable TLS verification, mount the Podman socket into
-jobs, enable privileged jobs, or activate a Docker daemon.
-
-Do not automatically unregister or delete a Runner through the GitLab API.
-During diagnosis, preserve failed registrations and token-bearing config for
-manual inspection.
-
-## Documentation expectations
-
-Update `README.md` when setup, supported commands, requirements, or operational
-behavior changes. Update the matching file under `docs/` for architecture,
-security, migration, rollback, or troubleshooting details. Keep
-`stacks/gitlab-runners/frontend/README.md` focused on that stack.
-
-Examples must use placeholder hosts and must not include real tokens or private
-environment data.
-
-## Commits
-
-Use the user's preferred Conventional Commit format:
+Commit format:
 
 ```text
 type: concise lowercase message
+
+- meaningful detail
 ```
 
-Examples:
-
-```text
-docs: add contributor instructions
-fix: preserve runner dns after reboot
-test: cover runner config reconciliation
-```
-
-Keep each commit focused. Do not amend, rebase, push, or otherwise rewrite
-history unless the user explicitly asks.
+Keep commits focused. Do not amend, rebase, push, or rewrite history unless the
+user explicitly asks.

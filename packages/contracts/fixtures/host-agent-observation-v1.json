@@ -1,0 +1,28 @@
+{
+  "contractVersion": "1.0",
+  "deliveryId": "b08629f8-dfa8-4d2f-a720-3f593b195033",
+  "hostId": "host-01",
+  "observedAt": "2026-07-31T09:00:00.000Z",
+  "agentVersion": "0.1.0",
+  "stacks": [
+    {
+      "id": "frontend-main",
+      "stackName": "gitlab-runners/frontend",
+      "workload": "frontend",
+      "runnerVersion": null,
+      "tags": ["frontend", "podman"],
+      "jobsRunning": null,
+      "checks": [
+        { "key": "vpn", "state": "healthy", "summary": "vpn check passed" },
+        { "key": "dns", "state": "healthy", "summary": "dns check passed" },
+        { "key": "tls", "state": "healthy", "summary": "tls check passed" },
+        { "key": "systemd-user", "state": "healthy", "summary": "systemd-user check passed" },
+        { "key": "podman-socket", "state": "healthy", "summary": "podman-socket check passed" },
+        { "key": "runner-manager", "state": "healthy", "summary": "runner-manager check passed" },
+        { "key": "runner-config", "state": "healthy", "summary": "runner-config check passed" },
+        { "key": "gitlab-connectivity", "state": "healthy", "summary": "gitlab-connectivity check passed" }
+      ],
+      "drift": null
+    }
+  ]
+}

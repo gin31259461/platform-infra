@@ -1,0 +1,18 @@
+{
+  "allowPlaintextLoopback": false,
+  "contractVersion": "1.0",
+  "controlPlaneUrl": "https://runner-platform.example.invalid",
+  "credentialId": "hac_REPLACE_WITH_CREDENTIAL_ID",
+  "hostId": "host-01",
+  "requestTimeoutSeconds": 10,
+  "stack": {
+    "gitlabHealthPath": "/-/health",
+    "gitlabHostname": "gitlab.example.invalid",
+    "id": "frontend-main",
+    "runnerService": "gitlab-runner-frontend.service",
+    "stackName": "gitlab-runners/frontend",
+    "tags": ["frontend", "podman"],
+    "vpnInterface": "tailscale0",
+    "workload": "frontend"
+  }
+}

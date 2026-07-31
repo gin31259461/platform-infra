@@ -9,5 +9,14 @@ secrets/
 *.vault-password
 .env
 .env.*
+!apps/web/.env.example
 *.retry
 .cache/
+
+node_modules/
+.next/
+apps/web/generated/prisma/
+coverage/
+*.tsbuildinfo
+__pycache__/
+*.pyc

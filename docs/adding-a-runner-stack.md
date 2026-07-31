@@ -1,8 +1,14 @@
 # Adding a Runner stack
 
-Create `stacks/gitlab-runners/<workload>` and reuse
+Create stacks by infrastructure function and workload. Runner stacks live at
+`stacks/gitlab-runners/<workload>` and reuse
 `playbooks/gitlab-runner.yml`. Do not copy the user, systemd, Podman, network,
 TLS, manager, registration, or validation implementation.
+
+Every stack requires `README.md` and `config.example.yml`; add examples and
+smoke tests only when the workload needs them. The canonical stack name must
+match `^[a-z0-9][a-z0-9-]*/[a-z0-9][a-z0-9-]*$`. Operation scripts resolve
+canonical names and never accept caller-supplied filesystem paths.
 
 Choose a unique Linux user, service, container name, Project Runner token, tag
 set, config directory, and cache boundary. Pin the manager and default job
@@ -17,8 +23,9 @@ package names, tool versions, project paths, or package sources in stack
 configuration; those belong to each consuming project's `.gitlab-ci.yml`.
 
 Add a minimal smoke pipeline using the new tags. Verify it before a full
-consumer pipeline. Add path-based CI rules for the stack and make all changes
-to shared Runner roles trigger validation of this new stack.
+consumer pipeline. Standard `config.example.yml` discovery adds the stack to
+`tests/validate-all.sh`; also add path-based CI rules and make shared Runner
+role changes trigger its validation.
 
 Deployment-capable Runners require a different trust boundary: a dedicated
 user, socket, token, protected tags/ref policy, credentials, cache, config, and

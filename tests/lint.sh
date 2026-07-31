@@ -7,6 +7,8 @@ mapfile -t shell_files < <(find "${PROJECT_ROOT}/scripts" "${PROJECT_ROOT}/tests
   -type f -name '*.sh' -print | sort)
 mapfile -t yaml_files < <(find "${PROJECT_ROOT}" -type f \
   \( -name '*.yml' -o -name '*.yaml' \) \
+  ! -path '*/node_modules/*' \
+  ! -path '*/.next/*' \
   ! -path '*/stacks/*/config.yml' -print | sort)
 
 for script in "${shell_files[@]}"; do
