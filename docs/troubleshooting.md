@@ -21,6 +21,9 @@ For user service logs, use the exact command printed by `make status`.
 | Quadlet service fails | Run `systemctl --user status` and `journalctl --user` as the Runner user. |
 | Registration exists but verify fails | Preserve it; check GitLab reachability, token state, and GitLab UI. |
 | Job cannot pull image | Confirm the full image reference matches `allowed_images`. |
+| SQL Server service is rejected | Match the official SQL Server repository and `allowed_services`. |
+| SQL Server never becomes ready | Check its pinned tag, EULA setting, and masked `MSSQL_SA_PASSWORD_UI`. |
+| NuGet restore fails | Check source names and HTTPS URLs, then the matching masked credentials. |
 | Browser tests crash | Confirm the 1 GiB shared-memory setting and host memory pressure. |
 
 Do not unregister or delete a Runner automatically during diagnosis.

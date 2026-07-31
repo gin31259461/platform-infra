@@ -62,6 +62,10 @@ while IFS= read -r allowed_image; do
   register_args+=(--docker-allowed-images "${allowed_image}")
 done < <(yaml_list runner.allowed_images)
 
+while IFS= read -r allowed_service; do
+  register_args+=(--docker-allowed-services "${allowed_service}")
+done < <(yaml_list_optional runner.allowed_services)
+
 if [[ -n ${vpn_dns} ]]; then
   register_args+=(--docker-dns "${vpn_dns}")
 fi

@@ -58,6 +58,37 @@ else:
 PY
 }
 
+yaml_value_optional() {
+  local dotted_path=$1
+  require_command python
+  CONFIG_PATH="${STACK_CONFIG}" YAML_DOTTED_PATH="${dotted_path}" python - <<'PY'
+import os
+import sys
+
+try:
+    import yaml
+except ImportError:
+    sys.exit("PyYAML is required; run sudo make bootstrap first.")
+
+with open(os.environ["CONFIG_PATH"], encoding="utf-8") as stream:
+    value = yaml.safe_load(stream)
+
+for key in os.environ["YAML_DOTTED_PATH"].split("."):
+    if not isinstance(value, dict) or key not in value:
+        sys.exit(0)
+    value = value[key]
+
+if isinstance(value, bool):
+    print(str(value).lower())
+elif value is None:
+    print("")
+elif isinstance(value, (dict, list)):
+    sys.exit(f"Config value is not scalar: {os.environ['YAML_DOTTED_PATH']}")
+else:
+    print(value)
+PY
+}
+
 yaml_list() {
   local dotted_path=$1
   require_command python
@@ -76,6 +107,33 @@ with open(os.environ["CONFIG_PATH"], encoding="utf-8") as stream:
 for key in os.environ["YAML_DOTTED_PATH"].split("."):
     if not isinstance(value, dict) or key not in value:
         sys.exit(f"Missing config value: {os.environ['YAML_DOTTED_PATH']}")
+    value = value[key]
+
+if not isinstance(value, list) or not all(isinstance(item, str) for item in value):
+    sys.exit(f"Config value is not a string list: {os.environ['YAML_DOTTED_PATH']}")
+for item in value:
+    print(item)
+PY
+}
+
+yaml_list_optional() {
+  local dotted_path=$1
+  require_command python
+  CONFIG_PATH="${STACK_CONFIG}" YAML_DOTTED_PATH="${dotted_path}" python - <<'PY'
+import os
+import sys
+
+try:
+    import yaml
+except ImportError:
+    sys.exit("PyYAML is required; run sudo make bootstrap first.")
+
+with open(os.environ["CONFIG_PATH"], encoding="utf-8") as stream:
+    value = yaml.safe_load(stream)
+
+for key in os.environ["YAML_DOTTED_PATH"].split("."):
+    if not isinstance(value, dict) or key not in value:
+        sys.exit(0)
     value = value[key]
 
 if not isinstance(value, list) or not all(isinstance(item, str) for item in value):

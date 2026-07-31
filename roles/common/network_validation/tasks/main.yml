@@ -70,7 +70,7 @@
         ]
         + network_validation_dns_args
         + [
-          frontend.curl_image,
+          common_network_validation_image,
           '--fail', '--show-error', '--silent', '--location',
           '--connect-timeout', common_network_connect_timeout_seconds | string,
           '--max-time', common_network_max_time_seconds | string,
@@ -94,7 +94,7 @@
         + network_validation_dns_args
         + [
           '--volume', tls.private_ca_source ~ ':/tmp/gitlab-ca.crt:ro',
-          frontend.curl_image,
+          common_network_validation_image,
           '--fail', '--show-error', '--silent', '--location',
           '--cacert', '/tmp/gitlab-ca.crt',
           '--connect-timeout', common_network_connect_timeout_seconds | string,

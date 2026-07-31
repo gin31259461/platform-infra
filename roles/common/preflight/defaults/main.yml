@@ -2,3 +2,13 @@
 common_supported_stack_types:
   - gitlab-runner
 common_allow_shared_runner_user: false
+common_network_validation_image: >-
+  {{
+    network.validation_image |
+    default(
+      (frontend | default({})).get(
+        'curl_image',
+        'docker.io/curlimages/curl:8.12.1'
+      )
+    )
+  }}

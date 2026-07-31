@@ -9,7 +9,7 @@
 - Mount the Podman socket only into the Runner manager.
 - Keep job volumes limited to `/cache`.
 - Use registry-qualified, pinned manager and job images.
-- Keep a narrow registry and repository image allowlist.
+- Keep narrow registry and repository allowlists for job and service images.
 - Validate VPN, DNS, and TLS from both host and container.
 - Install a public CA certificate when needed; never disable TLS verification.
 - Keep `config.yml`, `config.toml`, tokens, VPN credentials, and private keys
@@ -26,3 +26,8 @@ a failed registration.
 Normal uninstall preserves the token-bearing config with mode `0600`. Purge
 requires explicit confirmation. Removing the corresponding Runner from GitLab
 remains a manual UI operation.
+
+The .NET stack permits only `mcr.microsoft.com/mssql/server:*` as a CI service.
+SQL Server runs without privilege on the per-build network and is not exposed
+on the host. NuGet source credentials belong in masked GitLab CI/CD variables,
+never source URLs, stack configuration, or committed `NuGet.Config` files.

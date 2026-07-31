@@ -1,3 +1,13 @@
 ---
 common_network_connect_timeout_seconds: 10
 common_network_max_time_seconds: 30
+common_network_validation_image: >-
+  {{
+    network.validation_image |
+    default(
+      (frontend | default({})).get(
+        'curl_image',
+        'docker.io/curlimages/curl:8.12.1'
+      )
+    )
+  }}

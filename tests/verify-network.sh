@@ -15,7 +15,13 @@ vpn_interface="$(yaml_value network.vpn_interface)"
 vpn_dns="$(yaml_value network.vpn_dns)"
 gitlab_hostname="$(yaml_value gitlab.hostname)"
 health_url="$(yaml_value gitlab.health_url)"
-curl_image="$(yaml_value frontend.curl_image)"
+curl_image="$(yaml_value_optional network.validation_image)"
+if [[ -z ${curl_image} ]]; then
+  curl_image="$(yaml_value_optional frontend.curl_image)"
+fi
+if [[ -z ${curl_image} ]]; then
+  curl_image="docker.io/curlimages/curl:8.12.1"
+fi
 private_ca_enabled="$(yaml_value tls.private_ca_enabled)"
 installed_ca="/home/${runner_user}/gitlab-runner/config/certs/ca.crt"
 

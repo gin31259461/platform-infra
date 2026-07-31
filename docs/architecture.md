@@ -2,11 +2,13 @@
 
 Each stack expresses workload-specific values while shared Ansible roles own
 host, user, Podman, systemd, network, TLS, and Runner manager behavior.
+The pinned `network.validation_image` belongs to that shared infrastructure
+layer and is used only for container-level connectivity diagnostics.
 
 ```text
-stacks/gitlab-runners/frontend/config.yml
-                    |
-                    v
+stacks/gitlab-runners/<workload>/config.yml
+                     |
+                     v
 playbooks/gitlab-runner.yml
   |-- common/preflight
   |-- common/arch_packages
@@ -33,3 +35,7 @@ the Docker executor to use that endpoint. Job volumes contain only `/cache`.
 Increasing concurrency or adding a deployment Runner requires a separate
 security and capacity review.
 
+The .NET stack starts SQL Server only as a per-build service container. It
+shares the job's isolated network, is not published on the host, and receives
+neither the Runner manager's host network nor the Podman socket. SDK, runtime,
+and SQL Server versions are selected by pinned consumer-pipeline image tags.

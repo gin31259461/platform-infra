@@ -16,10 +16,24 @@ Replace the GitLab hostname and VPN interface. If GitLab uses a private CA,
 set `tls.private_ca_enabled: true` and provide an absolute path to the public
 CA certificate. Never place a private key in this repository.
 
+The Runner configuration owns only the host and registration policy.
+`runner.default_job_image` is the fallback for jobs without an `image`,
+`runner.allowed_images` limits project-selected images, and
+`network.validation_image` is used only for Runner network diagnostics.
+
+Package names, Node and Playwright versions, and pnpm versions belong in the
+consuming project's `.gitlab-ci.yml`. Adapt
+`examples/frontend.gitlab-ci.yml` there instead of adding those values to the
+Runner's `config.yml`.
+
 If the VPN changes DNS during startup, set `network.vpn_dns` to its resolver
 IP. Use `100.100.100.100` for this host's Tailscale DNS. `make install`
 applies the resolver to the Runner manager and reconciles existing CI job
 configuration without changing the Runner token.
+
+For an older local configuration, move `frontend.curl_image` to
+`network.validation_image` and remove the remaining `frontend` section. The
+legacy curl location is accepted temporarily to support migration.
 
 ## Install and register
 

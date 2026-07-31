@@ -89,6 +89,9 @@ if docker.get("privileged") is not False:
 expected = stack_config["runner"]["allowed_images"]
 if docker.get("allowed_images") != expected:
     sys.exit("Runner allowed_images is incorrect.")
+expected_services = stack_config["runner"].get("allowed_services")
+if expected_services is not None and docker.get("allowed_services") != expected_services:
+    sys.exit("Runner allowed_services is incorrect.")
 for volume in docker.get("volumes", []):
     if "podman.sock" in volume or "docker.sock" in volume:
         sys.exit("A container runtime socket is exposed to CI jobs.")

@@ -3,8 +3,8 @@
 ## Project overview
 
 `platform-infra` is an infrastructure automation monorepo for self-managed
-Linux hosts. Its current stack installs one project-scoped frontend GitLab
-Runner on Arch Linux.
+Linux hosts. Its stacks install project-scoped frontend and .NET GitLab
+Runners on Arch Linux.
 
 The Runner manager is a rootless Podman container managed by a systemd user
 Quadlet. GitLab Runner uses the Docker executor protocol against that user's
@@ -38,7 +38,8 @@ documents above as the source of truth.
 - `inventory/localhost.yml`: local-only Ansible inventory
 - `.gitlab-ci.yml`: repository lint and validation pipeline
 
-The supported stack is `gitlab-runners/frontend`.
+The supported stacks are `gitlab-runners/frontend` and
+`gitlab-runners/dotnet`.
 
 ## Commands
 
@@ -220,7 +221,8 @@ Stack names must match:
 
 Every stack requires a `README.md` and `config.example.yml`. New Runner stacks
 must use a unique Linux user, service name, container name, token, cache, tags,
-and trust boundary.
+and trust boundary. Service containers require a narrow `allowed_services`
+repository allowlist.
 
 Keep these security defaults unless an explicit review approves a change:
 

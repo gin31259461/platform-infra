@@ -1,0 +1,150 @@
+---
+stages:
+  - verify
+  - build
+  - runtime
+
+default:
+  tags:
+    - dotnet
+    - podman
+
+workflow:
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+    - if: '$CI_COMMIT_BRANCH && $CI_OPEN_MERGE_REQUESTS && $CI_PIPELINE_SOURCE == "push"'
+      when: never
+    - if: "$CI_COMMIT_TAG"
+    - if: "$CI_COMMIT_BRANCH"
+
+variables:
+  DOTNET_SDK_IMAGE: mcr.microsoft.com/dotnet/sdk
+  DOTNET_SDK_VERSION: 10.0.302-noble
+  DOTNET_RUNTIME_IMAGE: mcr.microsoft.com/dotnet/aspnet
+  DOTNET_RUNTIME_VERSION: 10.0.7-noble
+  SQL_SERVER_IMAGE: mcr.microsoft.com/mssql/server
+  SQL_SERVER_VERSION: 2022-CU25-GDR2-ubuntu-22.04
+  SQL_TOOLS_PACKAGE: mssql-tools18
+  SQL_TOOLS_REPOSITORY_URL: https://packages.microsoft.com/config/ubuntu/24.04/packages-microsoft-prod.deb
+  DOTNET_PROJECT: REPLACE_WITH_SOLUTION_OR_PROJECT_PATH
+  DOTNET_ENTRY_DLL: REPLACE_WITH_PUBLISHED_DLL
+  DOTNET_CLI_TELEMETRY_OPTOUT: "1"
+  DOTNET_NOLOGO: "1"
+  NUGET_PACKAGES: .nuget/packages
+  NUGET_CONFIG_FILE: .ci/NuGet.Config
+  # One source per line in name=URL form. Names may contain only letters,
+  # digits, and underscores.
+  NUGET_SOURCES: |
+    nuget_org=https://api.nuget.org/v3/index.json
+    private_feed=https://REPLACE_WITH_NUGET_HOST/v3/index.json
+  ACCEPT_EULA: "Y"
+  MSSQL_PID: Developer
+  # MSSQL_SA_PASSWORD_UI is a masked project variable. Reassignment makes it
+  # available to the SQL Server service container.
+  MSSQL_SA_PASSWORD: "$MSSQL_SA_PASSWORD_UI"
+  SQL_SERVER_HOST: mssql
+  SQL_SERVER_PORT: "1433"
+
+.dotnet-job:
+  image: "${DOTNET_SDK_IMAGE}:${DOTNET_SDK_VERSION}"
+  before_script:
+    - mkdir -p "$(dirname "${NUGET_CONFIG_FILE}")"
+    - |
+      printf '%s\n' \
+        '<?xml version="1.0" encoding="utf-8"?>' \
+        '<configuration>' \
+        '<packageSources />' \
+        '</configuration>' >"${NUGET_CONFIG_FILE}"
+    - |
+      while IFS='=' read -r source_name source_url; do
+        [ -n "${source_name}" ] || continue
+        case "${source_name}" in
+          *[!A-Za-z0-9_]*)
+            echo "Invalid NuGet source name: ${source_name}" >&2
+            exit 1
+            ;;
+        esac
+        [ -n "${source_url}" ] || {
+          echo "Missing URL for NuGet source: ${source_name}" >&2
+          exit 1
+        }
+        case "${source_url}" in
+          https://*) ;;
+          *)
+            echo "NuGet source must use HTTPS: ${source_name}" >&2
+            exit 1
+            ;;
+        esac
+        dotnet nuget add source "${source_url}" \
+          --name "${source_name}" \
+          --configfile "${NUGET_CONFIG_FILE}"
+      done <<<"${NUGET_SOURCES}"
+    - dotnet restore "${DOTNET_PROJECT}" --configfile "${NUGET_CONFIG_FILE}"
+  after_script:
+    - rm -f -- "${NUGET_CONFIG_FILE}"
+  cache:
+    key:
+      prefix: "nuget-${DOTNET_SDK_VERSION}"
+      files:
+        - global.json
+        - packages.lock.json
+    paths:
+      - .nuget/packages/
+    policy: pull-push
+
+unit_tests:
+  extends: .dotnet-job
+  stage: verify
+  script:
+    - dotnet test "${DOTNET_PROJECT}" --no-restore --configuration Release
+
+sql_server_tests:
+  extends: .dotnet-job
+  stage: verify
+  services:
+    - name: "${SQL_SERVER_IMAGE}:${SQL_SERVER_VERSION}"
+      alias: mssql
+  script:
+    - apt-get update
+    - apt-get install --yes --no-install-recommends ca-certificates curl
+    - |
+      curl --fail --show-error --silent --location \
+        --output /tmp/packages-microsoft-prod.deb \
+        "${SQL_TOOLS_REPOSITORY_URL}"
+    - dpkg --install /tmp/packages-microsoft-prod.deb
+    - rm -f -- /tmp/packages-microsoft-prod.deb
+    - apt-get update
+    - ACCEPT_EULA=Y apt-get install --yes --no-install-recommends "${SQL_TOOLS_PACKAGE}"
+    - /opt/mssql-tools18/bin/sqlcmd -? >/dev/null
+    - |
+      for attempt in $(seq 1 60); do
+        if (echo >/dev/tcp/"${SQL_SERVER_HOST}"/"${SQL_SERVER_PORT}") 2>/dev/null; then
+          break
+        fi
+        if [ "${attempt}" -eq 60 ]; then
+          echo "SQL Server did not become ready." >&2
+          exit 1
+        fi
+        sleep 2
+      done
+    - dotnet test "${DOTNET_PROJECT}" --no-restore --configuration Release --filter "Category=Integration"
+
+publish:
+  extends: .dotnet-job
+  stage: build
+  script:
+    - dotnet publish "${DOTNET_PROJECT}" --no-restore --configuration Release --output publish
+  artifacts:
+    expire_in: 14 days
+    paths:
+      - publish/
+
+runtime_check:
+  stage: runtime
+  image: "${DOTNET_RUNTIME_IMAGE}:${DOTNET_RUNTIME_VERSION}"
+  needs:
+    - job: publish
+      artifacts: true
+  script:
+    - dotnet --list-runtimes
+    - test -f "publish/${DOTNET_ENTRY_DLL}"

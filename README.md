@@ -3,8 +3,8 @@
 Infrastructure automation for project-scoped GitLab Runners on self-managed
 Arch Linux hosts.
 
-The current `frontend` stack runs both the GitLab Runner manager and its CI
-jobs with rootless Podman. It is designed for GitLab instances reachable
+The frontend and .NET stacks run both the GitLab Runner manager and their CI
+jobs with rootless Podman. They are designed for GitLab instances reachable
 through a manually managed VPN, with explicit DNS handling for reliable
 recovery after a host reboot.
 
@@ -14,10 +14,12 @@ recovery after a host reboot.
 - A Quadlet-managed GitLab Runner manager with systemd user lingering
 - Docker executor compatibility through the Podman API socket
 - Per-build job networks with no runtime socket exposed to CI jobs
+- Dedicated frontend and .NET workload stacks with separate trust boundaries
+- Configurable .NET SDK/runtime images, SQL Server service, and NuGet sources
 - Explicit VPN DNS for both the manager and job containers
 - Optional private-CA installation without disabling TLS verification
 - Idempotent Ansible installation, local verification, and safe uninstall
-- Pinned container images and a narrow job-image allowlist
+- Pinned container images and narrow job/service image allowlists
 
 > [!IMPORTANT]
 > This repository does not install or configure the VPN and does not create,
@@ -59,7 +61,8 @@ full trust-boundary description.
 
 Configure the GitLab Runner with:
 
-- Tags: `frontend`, `podman`
+- Tags: `frontend`, `podman` for the frontend stack, or `dotnet`, `podman`
+  for the .NET stack
 - Run untagged jobs: disabled
 - Lock to current project: enabled
 - Protected status: according to the project's release policy
@@ -69,6 +72,18 @@ to another stable, unauthenticated HTTPS endpoint on that server that returns
 `200`.
 
 ## Quick start
+
+The steps below use the frontend stack. For .NET, use
+`STACK=gitlab-runners/dotnet` and follow the
+[.NET stack README](stacks/gitlab-runners/dotnet/README.md) for its SDK,
+runtime, SQL Server, and NuGet configuration.
+
+The .NET project path, tool versions, SQL Server version, and NuGet sources
+are project-level settings owned by the consuming `.gitlab-ci.yml`; they are
+not duplicated in the Runner's `config.yml`.
+
+Frontend package names, Node and Playwright versions, and pnpm versions follow
+the same rule and are owned by the frontend project's `.gitlab-ci.yml`.
 
 ### 1. Create the local stack configuration
 
@@ -173,10 +188,9 @@ The stack configuration is grouped by responsibility:
 | --- | --- |
 | `stack` | Stack type, identifier, and description |
 | `gitlab` | GitLab URL, hostname, and HTTPS health endpoint |
-| `runner` | Identity, resource limits, image, tags, and image allowlist |
-| `network` | VPN interface, optional VPN DNS, and manager network mode |
+| `runner` | Identity, resource limits, image, tags, and job/service allowlists |
+| `network` | VPN, diagnostic container image, DNS, and manager network mode |
 | `tls` | Optional public private-CA certificate source |
-| `frontend` | Pinned images and package-tool versions used by frontend CI |
 
 Important invariants enforced by validation:
 
@@ -185,6 +199,8 @@ Important invariants enforced by validation:
 - The manager uses host networking; jobs do not.
 - Fixed images are registry-qualified and pinned.
 - Job images must match the configured allowlist.
+- Network diagnostics use a pinned `docker.io/curlimages/curl` image.
+- .NET service images are limited to the SQL Server allowlist.
 - `network.vpn_dns`, when set, must be an IP address.
 - Runner users cannot be shared by configured stacks.
 - Secrets and private keys are rejected from stack configuration.

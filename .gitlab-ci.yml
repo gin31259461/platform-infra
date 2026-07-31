@@ -32,6 +32,21 @@ validate_frontend_runner:
   script:
     - ./tests/validate-stack.sh gitlab-runners/frontend
 
+validate_dotnet_runner:
+  stage: validate
+  rules:
+    - changes:
+        - roles/common/**/*
+        - roles/gitlab_runner/**/*
+        - playbooks/gitlab-runner.yml
+        - scripts/**/*
+        - tests/**/*
+        - stacks/gitlab-runners/dotnet/**/*
+        - requirements.yml
+        - ansible.cfg
+  script:
+    - ./tests/validate-stack.sh gitlab-runners/dotnet
+
 validate_all:
   stage: test
   rules:

@@ -29,6 +29,10 @@ path = os.environ["CONFIG_TO_VALIDATE"]
 with open(path, encoding="utf-8") as stream:
     config = yaml.safe_load(stream)
 
+if not isinstance(config, dict):
+    raise SystemExit(f"{path}: configuration must be a mapping")
+
+
 def require(path_string, expected_type=None):
     value = config
     for key in path_string.split("."):
@@ -39,25 +43,64 @@ def require(path_string, expected_type=None):
         raise SystemExit(f"{path}: {path_string} has the wrong type")
     return value
 
+
+def require_string(path_string):
+    value = require(path_string, str)
+    if not value:
+        raise SystemExit(f"{path}: {path_string} must not be empty")
+    return value
+
+
+def validate_fixed_images(images):
+    for image in images:
+        if not image_pattern.fullmatch(image):
+            raise SystemExit(f"{path}: image is not registry-qualified: {image}")
+        tag = image.rsplit(":", maxsplit=1)[1]
+        if tag in {"latest", "alpine"} or tag.endswith("-latest") or "*" in image:
+            raise SystemExit(f"{path}: image is not pinned: {image}")
+
+
+def validate_image_allowlist(actual, expected, field):
+    if actual != expected:
+        raise SystemExit(f"{path}: {field} does not match the {stack_id} allowlist")
+    for image in actual:
+        if not isinstance(image, str) or not image_pattern.fullmatch(image):
+            raise SystemExit(f"{path}: allowed image is not registry-qualified")
+
+
 required_strings = [
     "stack.type", "stack.id", "stack.description", "gitlab.url",
     "gitlab.hostname", "gitlab.health_url", "runner.name", "runner.user",
     "runner.container_name", "runner.service_name", "runner.image",
     "runner.memory", "runner.pull_policy", "runner.default_job_image",
     "network.vpn_interface",
-    "frontend.package_name", "frontend.node_image",
-    "frontend.playwright_image", "frontend.curl_image",
-    "frontend.pnpm_version",
 ]
 for field in required_strings:
-    value = require(field, str)
-    if not value:
-        raise SystemExit(f"{path}: {field} must not be empty")
+    require_string(field)
 
 if require("stack.type") != "gitlab-runner":
     raise SystemExit(f"{path}: unsupported stack.type")
-if not re.fullmatch(r"[a-z0-9][a-z0-9-]*", require("stack.id")):
+stack_id = require("stack.id")
+if not re.fullmatch(r"[a-z0-9][a-z0-9-]*", stack_id):
     raise SystemExit(f"{path}: unsafe stack.id")
+network_config = require("network", dict)
+network_validation_image = network_config.get("validation_image")
+if network_validation_image is None and stack_id == "frontend":
+    network_validation_image = config.get("frontend", {}).get("curl_image")
+    if network_validation_image is not None:
+        print(
+            f"{path}: frontend.curl_image is deprecated; "
+            "move it to network.validation_image",
+            file=sys.stderr,
+        )
+if network_validation_image is None:
+    network_validation_image = "docker.io/curlimages/curl:8.12.1"
+    print(
+        f"{path}: add network.validation_image; using the migration default",
+        file=sys.stderr,
+    )
+if not isinstance(network_validation_image, str) or not network_validation_image:
+    raise SystemExit(f"{path}: missing network.validation_image")
 if not require("gitlab.url").startswith("https://"):
     raise SystemExit(f"{path}: gitlab.url must use HTTPS")
 if not require("gitlab.health_url").startswith("https://"):
@@ -76,37 +119,65 @@ if vpn_dns:
         raise SystemExit(f"{path}: network.vpn_dns must be an IP address") from error
 
 image_pattern = re.compile(r"^[a-z0-9.-]+/[^\s]+:[^\s]+$")
-fixed_images = [
+common_fixed_images = [
     require("runner.image"),
     require("runner.default_job_image"),
-    require("frontend.node_image"),
-    require("frontend.playwright_image"),
-    require("frontend.curl_image"),
+    network_validation_image,
 ]
-for image in fixed_images:
-    if not image_pattern.fullmatch(image):
-        raise SystemExit(f"{path}: image is not registry-qualified: {image}")
-    if image.endswith((":latest", ":alpine")) or "*" in image:
-        raise SystemExit(f"{path}: image is not pinned: {image}")
+validate_fixed_images(common_fixed_images)
+if not network_validation_image.startswith("docker.io/curlimages/curl:"):
+    raise SystemExit(f"{path}: network.validation_image must use the curlimages repository")
 
-allowed = require("runner.allowed_images", list)
-expected_allowed = [
-    "docker.io/library/node:*",
-    "mcr.microsoft.com/playwright:*",
-    "docker.io/curlimages/curl:*",
-]
-if allowed != expected_allowed:
-    raise SystemExit(f"{path}: allowed_images does not match the frontend allowlist")
-for image in allowed:
-    if not image_pattern.fullmatch(image):
-        raise SystemExit(f"{path}: allowed image is not registry-qualified")
+if stack_id == "frontend":
+    validate_image_allowlist(
+        require("runner.allowed_images", list),
+        [
+            "docker.io/library/node:*",
+            "mcr.microsoft.com/playwright:*",
+            "docker.io/curlimages/curl:*",
+        ],
+        "runner.allowed_images",
+    )
+elif stack_id == "dotnet":
+    if not require("runner.default_job_image").startswith(
+        "mcr.microsoft.com/dotnet/sdk:"
+    ):
+        raise SystemExit(f"{path}: default job image must use the .NET SDK repository")
+    validate_image_allowlist(
+        require("runner.allowed_images", list),
+        [
+            "mcr.microsoft.com/dotnet/sdk:*",
+            "mcr.microsoft.com/dotnet/runtime:*",
+            "mcr.microsoft.com/dotnet/aspnet:*",
+        ],
+        "runner.allowed_images",
+    )
+    validate_image_allowlist(
+        require("runner.allowed_services", list),
+        ["mcr.microsoft.com/mssql/server:*"],
+        "runner.allowed_services",
+    )
+else:
+    raise SystemExit(f"{path}: unsupported stack.id: {stack_id}")
 
-for forbidden_key in (
+forbidden_keys = {
     "token", "runner_token", "registration_token", "vpn_private_key",
-    "private_key",
-):
-    if forbidden_key in config or forbidden_key in config.get("runner", {}):
-        raise SystemExit(f"{path}: forbidden secret key: {forbidden_key}")
+    "private_key", "password",
+}
+
+
+def reject_forbidden_keys(value):
+    if isinstance(value, dict):
+        for key, child in value.items():
+            if str(key).lower() in forbidden_keys:
+                raise SystemExit(f"{path}: forbidden secret key: {key}")
+            reject_forbidden_keys(child)
+    elif isinstance(value, list):
+        for child in value:
+            reject_forbidden_keys(child)
+
+
+reject_forbidden_keys(config)
 
 if os.environ["REJECT_PLACEHOLDERS"] == "true":
     rendered = yaml.safe_dump(config)
