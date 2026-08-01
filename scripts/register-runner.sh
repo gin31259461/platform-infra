@@ -5,9 +5,12 @@ SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=scripts/lib/stack.sh
 source "${SCRIPT_DIR}/lib/stack.sh"
 
-resolve_stack "${1:-}"
+resolve_stack_request "${1:-}" "${2:-}"
 require_stack_config
-[[ -n ${GITLAB_RUNNER_TOKEN:-} ]] || die "GITLAB_RUNNER_TOKEN is required."
+runner_token=""
+IFS= read -r runner_token || [[ -n ${runner_token} ]]
+trap 'runner_token=""' EXIT
+[[ ${runner_token} =~ ^glrt-[^[:space:]]{20,512}$ ]] || die "Runner authentication token format is invalid."
 
 runner_user="$(yaml_value runner.user)"
 container_name="$(yaml_value runner.container_name)"
@@ -72,7 +75,7 @@ fi
 
 # Stream the token to a short-lived shell inside the manager. The value never
 # appears in Podman arguments, command output, or a temporary file.
-if ! printf '%s\n' "${GITLAB_RUNNER_TOKEN}" |
+if ! printf '%s\n' "${runner_token}" |
   as_runner_user "${runner_user}" "${runner_uid}" \
     podman exec --interactive "${container_name}" sh -c '
       IFS= read -r CI_SERVER_TOKEN
@@ -81,6 +84,7 @@ if ! printf '%s\n' "${GITLAB_RUNNER_TOKEN}" |
     ' sh "${register_args[@]}" >/dev/null 2>&1; then
   die "Runner registration failed; the token and command output were not displayed."
 fi
+runner_token=""
 
 as_root chmod 0600 "${config_path}"
 as_runner_user "${runner_user}" "${runner_uid}" \

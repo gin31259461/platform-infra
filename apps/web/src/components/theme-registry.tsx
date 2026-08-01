@@ -6,17 +6,18 @@ import type { ReactNode } from "react";
 
 const theme = createTheme({
   palette: {
-    background: { default: "#f3f6fb", paper: "#ffffff" },
-    primary: { main: "#315efb" },
-    secondary: { main: "#14b8a6" },
+    background: { default: "#f6f8fa", paper: "#ffffff" },
+    divider: "#d0d7de",
+    primary: { main: "#0969da" },
+    secondary: { main: "#8250df" },
   },
-  shape: { borderRadius: 4 },
+  shape: { borderRadius: 6 },
   typography: {
-    fontFamily: "Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, sans-serif",
-    h1: { fontWeight: 750 },
-    h2: { fontWeight: 750 },
-    h3: { fontWeight: 750 },
-    button: { fontWeight: 700, textTransform: "none" },
+    fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
+    h1: { fontWeight: 600 },
+    h2: { fontWeight: 600 },
+    h3: { fontWeight: 600 },
+    button: { fontWeight: 600, textTransform: "none" },
   },
   components: {
     MuiPaper: { styleOverrides: { root: { backgroundImage: "none" } } },

@@ -17,7 +17,7 @@ done < <(find "${PROJECT_ROOT}/stacks" -mindepth 3 -maxdepth 3 \
   exit 1
 }
 
-PROJECT_ROOT="${PROJECT_ROOT}" python - <<'PY'
+PROJECT_ROOT="${PROJECT_ROOT}" uv run --locked python - <<'PY'
 import os
 from pathlib import Path
 

@@ -4,9 +4,9 @@
   "private": true,
   "scripts": {
     "postinstall": "prisma generate",
-    "dev": "next dev --turbopack --hostname 127.0.0.1",
+    "dev": "node --import tsx --env-file-if-exists=.env scripts/start-control-plane.ts --dev",
     "build": "next build",
-    "start": "next start --hostname 127.0.0.1",
+    "start": "node --import tsx --env-file-if-exists=.env scripts/start-control-plane.ts",
     "lint": "eslint .",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
@@ -20,19 +20,25 @@
     "host:bootstrap-agent": "tsx --env-file-if-exists=.env scripts/bootstrap-agent.ts",
     "host:issue-credential": "tsx --env-file-if-exists=.env scripts/issue-agent-credential.ts",
     "gitlab:discover": "tsx --env-file-if-exists=.env scripts/discover-gitlab-runners.ts",
+    "gitlab:credential:install": "tsx --env-file-if-exists=.env scripts/install-gitlab-credential.ts",
     "gitlab:import-discovery": "tsx --env-file-if-exists=.env scripts/import-gitlab-discovery.ts",
-    "gitlab:sync": "tsx --env-file-if-exists=.env scripts/sync-gitlab.ts"
+    "gitlab:sync": "tsx --env-file-if-exists=.env scripts/sync-gitlab.ts",
+    "gitlab:watch": "tsx --env-file-if-exists=.env scripts/watch-gitlab.ts",
+    "provisioning:project:allow": "tsx --env-file-if-exists=.env scripts/allow-provisioning-project.ts",
+    "provisioning:operation:request": "tsx --env-file-if-exists=.env scripts/request-provisioning-operation.ts",
+    "provisioning:host:stage": "tsx --env-file-if-exists=.env scripts/prepare-provisioning-host.ts",
+    "provisioning:worker:run": "tsx --env-file-if-exists=.env scripts/run-provisioning-worker.ts"
   },
   "dependencies": {
-    "@gitlab-runner-platform/contracts": "workspace:*",
-    "@gitlab-runner-platform/domain": "workspace:*",
-    "@prisma/adapter-pg": "7.5.0",
-    "@prisma/client": "7.5.0",
-    "@mui/material": "7.3.9",
-    "@mui/material-nextjs": "7.3.9",
     "@emotion/cache": "11.14.0",
     "@emotion/react": "11.14.0",
     "@emotion/styled": "11.14.1",
+    "@gitlab-runner-platform/contracts": "workspace:*",
+    "@gitlab-runner-platform/domain": "workspace:*",
+    "@mui/material": "7.3.9",
+    "@mui/material-nextjs": "7.3.9",
+    "@prisma/adapter-pg": "7.5.0",
+    "@prisma/client": "7.5.0",
     "@trpc/client": "11.15.1",
     "@trpc/server": "11.15.1",
     "next": "16.2.1",
@@ -40,6 +46,7 @@
     "react": "19.2.4",
     "react-dom": "19.2.4",
     "superjson": "2.2.6",
+    "yaml": "2.9.0",
     "zod": "4.3.6"
   },
   "devDependencies": {
@@ -50,8 +57,8 @@
     "eslint": "9.39.4",
     "eslint-config-next": "16.2.1",
     "prisma": "7.5.0",
-    "typescript": "5.9.3",
     "tsx": "4.20.6",
+    "typescript": "5.9.3",
     "vitest": "3.2.4"
   }
 }

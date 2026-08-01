@@ -19,6 +19,32 @@ enum ObservationSource {
   GITLAB
 }
 
+enum OperationType {
+  PROVISION_PROJECT_RUNNER
+}
+
+enum OperationState {
+  REQUESTED
+  AUTHORIZED
+  DISPATCHED
+  RUNNING
+  SUCCEEDED
+  FAILED
+  PARTIALLY_FAILED
+  UNKNOWN
+  CANCELLED
+  EXPIRED
+}
+
+enum ProvisioningStage {
+  AUTHORIZATION
+  GITLAB_RUNNER_CREATION
+  HOST_PREPARATION
+  RUNNER_REGISTRATION
+  VERIFICATION
+  FIRST_OBSERVATION
+}
+
 model User {
   id              String           @id @default(cuid())
   externalSubject String           @unique
@@ -41,10 +67,10 @@ model RoleAssignment {
 model RunnerHost {
   id               String            @id
   displayName      String
-  enrolledAt      DateTime
-  revokedAt       DateTime?
-  createdAt       DateTime          @default(now())
-  updatedAt       DateTime          @updatedAt
+  enrolledAt       DateTime
+  revokedAt        DateTime?
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
   stacks           RunnerStack[]
   agentCredentials AgentCredential[]
 }
@@ -66,18 +92,99 @@ model AgentCredential {
 }
 
 model RunnerStack {
-  id               String            @id
-  canonicalName    String
-  workload         String
-  hostId           String
-  createdAt        DateTime          @default(now())
-  updatedAt        DateTime          @updatedAt
-  host             RunnerHost        @relation(fields: [hostId], references: [id], onDelete: Restrict)
-  runnerRecord     RunnerRecordRef?
-  observations     Observation[]
-  agentCredentials AgentCredential[]
+  id                 String                  @id
+  canonicalName      String
+  workload           String
+  hostId             String
+  templateRevisionId String?
+  createdAt          DateTime                @default(now())
+  updatedAt          DateTime                @updatedAt
+  host               RunnerHost              @relation(fields: [hostId], references: [id], onDelete: Restrict)
+  templateRevision   RunnerTemplateRevision? @relation(fields: [templateRevisionId], references: [id], onDelete: Restrict)
+  runnerRecord       RunnerRecordRef?
+  observations       Observation[]
+  agentCredentials   AgentCredential[]
 
-  @@unique([hostId, canonicalName])
+  @@index([hostId, canonicalName])
+  @@index([templateRevisionId])
+}
+
+model GitLabProjectRef {
+  id              String      @id
+  gitlabProjectId String      @unique
+  path            String      @unique
+  enabled         Boolean     @default(true)
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+  operations      Operation[]
+}
+
+model RunnerTemplate {
+  id            String                   @id
+  canonicalName String                   @unique
+  workload      String
+  createdAt     DateTime                 @default(now())
+  updatedAt     DateTime                 @updatedAt
+  revisions     RunnerTemplateRevision[]
+}
+
+model RunnerTemplateRevision {
+  id               String         @id
+  runnerTemplateId String
+  revision         String
+  policy           Json
+  approvedAt       DateTime
+  retiredAt        DateTime?
+  createdAt        DateTime       @default(now())
+  runnerTemplate   RunnerTemplate @relation(fields: [runnerTemplateId], references: [id], onDelete: Restrict)
+  runnerStacks     RunnerStack[]
+  operations       Operation[]
+
+  @@unique([runnerTemplateId, revision])
+  @@index([retiredAt])
+}
+
+model Operation {
+  id                       String                 @id
+  type                     OperationType
+  state                    OperationState
+  actorId                  String
+  reason                   String
+  idempotencyKey           String                 @unique
+  correlationId            String                 @unique
+  gitlabProjectRefId       String
+  runnerTemplateRevisionId String
+  parameters               Json
+  redactedOutcome          Json?
+  requestedAt              DateTime               @default(now())
+  updatedAt                DateTime               @updatedAt
+  availableAt              DateTime               @default(now())
+  leaseOwner               String?
+  leaseExpiresAt           DateTime?
+  attemptCount             Int                    @default(0)
+  completedAt              DateTime?
+  gitlabProjectRef         GitLabProjectRef       @relation(fields: [gitlabProjectRefId], references: [id], onDelete: Restrict)
+  runnerTemplateRevision   RunnerTemplateRevision @relation(fields: [runnerTemplateRevisionId], references: [id], onDelete: Restrict)
+  events                   OperationEvent[]
+
+  @@index([state, availableAt])
+  @@index([gitlabProjectRefId])
+  @@index([runnerTemplateRevisionId])
+}
+
+model OperationEvent {
+  id          String             @id
+  operationId String
+  sequence    Int
+  state       OperationState
+  stage       ProvisioningStage?
+  eventType   String
+  payload     Json
+  occurredAt  DateTime           @default(now())
+  operation   Operation          @relation(fields: [operationId], references: [id], onDelete: Restrict)
+
+  @@unique([operationId, sequence])
+  @@index([occurredAt])
 }
 
 model RunnerRecordRef {
@@ -89,19 +196,19 @@ model RunnerRecordRef {
 }
 
 model Observation {
-  id            String            @id @default(cuid())
-  runnerStackId String
-  source        ObservationSource
-  deliveryId    String?
+  id             String            @id @default(cuid())
+  runnerStackId  String
+  source         ObservationSource
+  deliveryId     String?
   deliveryDigest String?
-  schemaVersion String
-  observedAt    DateTime
-  payload       Json
-  createdAt     DateTime          @default(now())
-  runnerStack   RunnerStack       @relation(fields: [runnerStackId], references: [id], onDelete: Cascade)
+  schemaVersion  String
+  observedAt     DateTime
+  payload        Json
+  createdAt      DateTime          @default(now())
+  runnerStack    RunnerStack       @relation(fields: [runnerStackId], references: [id], onDelete: Cascade)
 
-  @@index([runnerStackId, source, observedAt])
   @@unique([runnerStackId, source, deliveryId])
+  @@index([runnerStackId, source, observedAt])
 }
 
 model AuditEvent {

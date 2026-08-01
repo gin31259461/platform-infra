@@ -1,100 +1,95 @@
-import { Box, Button, Chip, Container, Divider, Paper, Stack, Typography } from "@mui/material";
+import { Box, Container, Paper, Table, TableBody, TableCell, TableRow, Typography } from "@mui/material";
+import { TRPCError } from "@trpc/server";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { TRPCError } from "@trpc/server";
 
 import { HealthChip } from "@/components/health-chip";
+import { formatAge, formatGitLabRecordState } from "@/lib/format";
 import { api } from "@/server/api/caller";
 
 type RunnerStackPageProps = { params: Promise<{ stackId: string }> };
 
-function BoundaryNode({ eyebrow, kind, label, meta }: { eyebrow: string; kind: string; label: string; meta: string }) {
-  return (
-    <Paper sx={{ border: "1px solid #d8dee8", borderRadius: 1, minWidth: 0, p: 2 }} variant="outlined">
-      <Box sx={{ alignItems: "center", display: "flex", gap: 1.5 }}>
-        <Box sx={{ bgcolor: "#edf3ff", border: "1px solid #d9e3f7", borderRadius: 1, color: "#315efb", fontSize: 9, fontWeight: 700, p: 1 }}>{kind}</Box>
-        <Box sx={{ minWidth: 0 }}>
-          <Typography color="text.secondary" fontSize={10}>{eyebrow}</Typography>
-          <Typography fontSize={13} fontWeight={700} noWrap>{label}</Typography>
-          <Typography color="text.secondary" fontSize={11} noWrap>{meta}</Typography>
-        </Box>
-      </Box>
-    </Paper>
-  );
-}
-
 export default async function RunnerStackPage({ params }: RunnerStackPageProps) {
   const { stackId } = await params;
   const stack = await api.fleet.byId({ id: stackId }).catch((error: unknown) => {
-    if (error instanceof TRPCError && error.code === "NOT_FOUND") {
-      notFound();
-    }
+    if (error instanceof TRPCError && error.code === "NOT_FOUND") notFound();
     throw error;
   });
+  const now = new Date().toISOString();
+
+  const facts = [
+    ["Stack ID", stack.id],
+    ["Template", stack.stackName],
+    ["Workload", stack.workload],
+    ["Runner Host", `${stack.hostDisplayName} (${stack.hostId})`],
+    ["Project", stack.projectPath ?? "Not correlated"],
+    ["GitLab Runner ID", stack.runnerRecordId ?? "Not correlated"],
+    ["GitLab state", formatGitLabRecordState(stack.gitlabState, stack.gitlabFreshness, stack.gitlabObservedAt)],
+    ["GitLab observation", formatAge(stack.gitlabObservedAt, now)],
+    ["Host observation", formatAge(stack.observedAt, now)],
+    ["Runner version", stack.runnerVersion ?? "Not reported"],
+    ["Jobs", stack.jobsRunning?.toString() ?? "Not reported"],
+  ] as const;
 
   return (
-    <Container component="main" maxWidth="xl" sx={{ py: 4 }}>
-      <Link href="/runners"><Button size="small">← Runner inventory</Button></Link>
-      <Box sx={{ alignItems: { md: "center" }, display: { md: "flex" }, justifyContent: "space-between", mt: 2 }}>
+    <Container component="main" maxWidth="lg" sx={{ py: 4 }}>
+      <Link href="/runners">
+        <Typography color="primary.main" fontSize={13} sx={{ "&:hover": { textDecoration: "underline" } }}>← Runners</Typography>
+      </Link>
+      <Box sx={{ alignItems: "center", display: "flex", justifyContent: "space-between", mt: 2 }}>
         <Box>
-          <Typography component="h1" fontSize={30} fontWeight={700}>{stack.projectPath ?? stack.stackName}</Typography>
-          <Typography color="text.secondary" fontFamily="monospace" fontSize={13} mt={.5}>{stack.id}</Typography>
+          <Typography component="h1" fontSize={24} fontWeight={600}>{stack.projectPath ?? stack.stackName}</Typography>
+          <Typography color="text.secondary" fontFamily="monospace" fontSize={12} mt={.5}>{stack.id}</Typography>
         </Box>
-        <Box mt={{ xs: 2, md: 0 }}><HealthChip state={stack.state} /></Box>
+        <HealthChip state={stack.state} />
       </Box>
 
-      <Paper sx={{ border: "1px solid #d8dee8", borderRadius: 1, mt: 3, p: 2.5 }} variant="outlined">
-        <Typography fontWeight={700}>Trust-boundary relationship</Typography>
-        <Typography color="text.secondary" fontSize={12}>The three observations stay explicit instead of collapsing into one Runner status.</Typography>
-        <Box sx={{ display: "grid", gap: 1.5, gridTemplateColumns: { md: "1fr 28px 1.1fr 28px 1fr" }, mt: 2.5 }}>
-          <BoundaryNode eyebrow="RUNNER HOST" kind="HOST" label={stack.hostDisplayName} meta={stack.hostId} />
-          <Box sx={{ alignItems: "center", color: "#8da0bb", display: { xs: "none", md: "flex" }, justifyContent: "center" }}>→</Box>
-          <BoundaryNode eyebrow="RUNNER STACK" kind="STACK" label={stack.stackName} meta={`${stack.runnerVersion ?? "Version unknown"} · ${stack.workload}`} />
-          <Box sx={{ alignItems: "center", color: "#8da0bb", display: { xs: "none", md: "flex" }, justifyContent: "center" }}>→</Box>
-          <BoundaryNode
-            eyebrow="GITLAB RECORD"
-            kind="GL"
-            label={stack.projectPath ?? "Not correlated"}
-            meta={stack.runnerRecordId === null ? "No explicit Runner Record" : `${stack.gitlabState} · ${stack.gitlabJobExecutionStatus} · ID ${stack.runnerRecordId}`}
-          />
-        </Box>
-      </Paper>
-
-      <Box sx={{ display: "grid", gap: 3, gridTemplateColumns: { lg: "1.2fr .8fr" }, mt: 3 }}>
-        <Paper sx={{ border: "1px solid #d8dee8", borderRadius: 1, p: 2.5 }} variant="outlined">
-          <Typography fontWeight={700}>Boundary evidence</Typography>
-          <Stack divider={<Divider />} mt={1.5}>
-            {stack.checks.map((check) => (
-              <Box key={check.key} sx={{ alignItems: "center", display: "grid", gap: 2, gridTemplateColumns: "110px 1fr auto", py: 1.5 }}>
-                <Typography fontFamily="monospace" fontSize={12} fontWeight={700}>{check.key}</Typography>
-                <Typography color="text.secondary" fontSize={12}>{check.summary}</Typography>
-                <HealthChip state={check.state} />
-              </Box>
-            ))}
-          </Stack>
+      <Box sx={{ display: "grid", gap: 3, gridTemplateColumns: { lg: "minmax(0, 1fr) minmax(320px, .7fr)" }, mt: 3 }}>
+        <Paper sx={{ border: "1px solid", borderColor: "divider", overflow: "hidden" }} variant="outlined">
+          <Box sx={{ bgcolor: "#f6f8fa", borderBottom: "1px solid", borderColor: "divider", px: 2, py: 1.25 }}>
+            <Typography fontSize={13} fontWeight={600}>Runner details</Typography>
+          </Box>
+          <Table size="small">
+            <TableBody>
+              {facts.map(([label, value]) => (
+                <TableRow key={label}>
+                  <TableCell sx={{ color: "text.secondary", fontSize: 12, width: 160 }}>{label}</TableCell>
+                  <TableCell sx={{ fontSize: 12 }}>{value}</TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
         </Paper>
 
-        <Paper sx={{ border: "1px solid #d8dee8", borderRadius: 1, p: 2.5 }} variant="outlined">
-          <Typography fontWeight={700}>Desired State drift</Typography>
+        <Paper sx={{ border: "1px solid", borderColor: "divider", overflow: "hidden" }} variant="outlined">
+          <Box sx={{ bgcolor: "#f6f8fa", borderBottom: "1px solid", borderColor: "divider", px: 2, py: 1.25 }}>
+            <Typography fontSize={13} fontWeight={600}>Drift</Typography>
+          </Box>
           {stack.drift === null
-            ? <Typography color="text.secondary" fontSize={13} mt={2}>Drift was not evaluated by this Agent.</Typography>
+            ? <Typography color="text.secondary" fontSize={13} p={2}>Not evaluated</Typography>
             : stack.drift.length === 0
-            ? <Typography color="success.dark" fontSize={13} fontWeight={800} mt={2}>No material drift detected</Typography>
-            : (
-              <Stack spacing={1.5} mt={2}>
-                {stack.drift.map((finding) => (
-                  <Box key={finding.field} sx={{ bgcolor: "#fff7e6", border: "1px solid #f6d68b", borderRadius: 1, p: 2 }}>
-                    <Typography color="#805800" fontFamily="monospace" fontSize={11}>{finding.field}</Typography>
-                    <Typography color="#674b00" fontSize={12} fontWeight={800} mt={.5}>{finding.summary}</Typography>
-                    <Chip label={finding.reconcilable ? "reconcilable later" : "manual review"} size="small" sx={{ borderRadius: "4px", mt: 1 }} variant="outlined" />
-                  </Box>
-                ))}
-              </Stack>
-            )}
-          <Divider sx={{ my: 2 }} />
-          <Typography color="text.secondary" fontSize={12}>Read-only milestone: no reconcile Operation can be requested.</Typography>
+              ? <Typography color="success.dark" fontSize={13} p={2}>No material drift</Typography>
+              : stack.drift.map((finding) => (
+                <Box key={finding.field} sx={{ borderBottom: "1px solid", borderColor: "divider", p: 2, "&:last-child": { borderBottom: 0 } }}>
+                  <Typography fontFamily="monospace" fontSize={11}>{finding.field}</Typography>
+                  <Typography color="warning.dark" fontSize={12} mt={.5}>{finding.summary}</Typography>
+                </Box>
+              ))}
         </Paper>
       </Box>
+
+      <Paper sx={{ border: "1px solid", borderColor: "divider", mt: 3, overflow: "hidden" }} variant="outlined">
+        <Box sx={{ bgcolor: "#f6f8fa", borderBottom: "1px solid", borderColor: "divider", px: 2, py: 1.25 }}>
+          <Typography fontSize={13} fontWeight={600}>Host checks</Typography>
+        </Box>
+        {stack.checks.map((check) => (
+          <Box key={check.key} sx={{ alignItems: "center", borderBottom: "1px solid", borderColor: "divider", display: "grid", gap: 2, gridTemplateColumns: { sm: "150px 1fr auto" }, px: 2, py: 1.25, "&:last-child": { borderBottom: 0 } }}>
+            <Typography fontFamily="monospace" fontSize={12}>{check.key}</Typography>
+            <Typography color="text.secondary" fontSize={12}>{check.summary}</Typography>
+            <HealthChip state={check.state} />
+          </Box>
+        ))}
+      </Paper>
     </Container>
   );
 }

@@ -22,6 +22,31 @@ resolve_stack() {
   [[ -f ${STACK_EXAMPLE_CONFIG} ]] || die "Missing stack example config: ${STACK_EXAMPLE_CONFIG}"
 }
 
+resolve_stack_request() {
+  local requested=${1:-}
+  local instance_id=${2:-}
+  resolve_stack "${requested}"
+  [[ -z ${instance_id} ]] && return 0
+
+  local workload=${STACK_NAME#gitlab-runners/}
+  [[ ${STACK_NAME} == "gitlab-runners/${workload}" ]] ||
+    die "Provisioned instances require a supported GitLab Runner Template."
+  [[ ${instance_id} =~ ^(frontend|dotnet)-[a-f0-9]{12}$ ]] ||
+    die "Invalid provisioned Runner Stack ID."
+  [[ ${instance_id} == "${workload}-"* ]] ||
+    die "Provisioned Runner Stack ID does not match its Template."
+
+  local provisioned_root
+  provisioned_root="$(realpath -m -- "${PROJECT_ROOT}/secrets/provisioned-stacks")"
+  STACK_CONFIG="$(realpath -m -- "${provisioned_root}/${instance_id}/config.yml")"
+  [[ ${STACK_CONFIG} == "${provisioned_root}/${instance_id}/config.yml" ]] ||
+    die "Provisioned Runner Stack path escapes its fixed directory."
+  [[ -f ${STACK_CONFIG} && ! -L ${STACK_CONFIG} ]] ||
+    die "Missing or unsafe provisioned Runner Stack configuration."
+  [[ $(stat --format='%a' -- "${STACK_CONFIG}") == 600 ]] ||
+    die "Provisioned Runner Stack configuration must have mode 0600."
+}
+
 require_stack_config() {
   [[ -f ${STACK_CONFIG} ]] ||
     die "Missing ${STACK_CONFIG}. Copy config.example.yml to config.yml and edit the placeholders."

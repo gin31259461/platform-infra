@@ -6,6 +6,7 @@ import {
   fleetSnapshotSchema,
   gitlabRunnerObservationSchema,
   hostAgentObservationSchema,
+  projectRunnerProvisioningRequestSchema,
   runnerStackObservationSchema,
 } from "./index";
 
@@ -54,6 +55,39 @@ describe("runner observation contract", () => {
       generatedAt: validObservation.observedAt,
       stacks: [validObservation],
     }).contractVersion).toBe(contractVersion);
+  });
+});
+
+describe("Project Runner provisioning request contract", () => {
+  it("accepts only platform-owned Project and Template references", () => {
+    expect(projectRunnerProvisioningRequestSchema.parse({
+      idempotencyKey: "b08629f8-dfa8-4d2f-a720-3f593b195033",
+      projectRefId: "project-shop-web",
+      reason: "Add isolated frontend capacity",
+      templateRevisionId: "template-frontend-v1",
+    })).toEqual({
+      idempotencyKey: "b08629f8-dfa8-4d2f-a720-3f593b195033",
+      projectRefId: "project-shop-web",
+      reason: "Add isolated frontend capacity",
+      templateRevisionId: "template-frontend-v1",
+    });
+  });
+
+  it("rejects caller-supplied host settings, paths, commands, and tokens", () => {
+    for (const forbidden of [
+      { path: "/etc/gitlab-runner" },
+      { command: "systemctl restart" },
+      { runnerToken: "not-accepted" },
+      { linuxUser: "runner-user" },
+    ]) {
+      expect(() => projectRunnerProvisioningRequestSchema.parse({
+        idempotencyKey: "b08629f8-dfa8-4d2f-a720-3f593b195033",
+        projectRefId: "project-shop-web",
+        reason: "Add isolated frontend capacity",
+        templateRevisionId: "template-frontend-v1",
+        ...forbidden,
+      })).toThrow();
+    }
   });
 });
 

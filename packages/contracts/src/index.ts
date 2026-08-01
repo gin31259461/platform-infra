@@ -138,6 +138,63 @@ export const actorSchema = z.object({
   roles: z.array(roleSchema).min(1),
 }).strict();
 
+export const gitLabProjectPathSchema = z.string()
+  .min(3)
+  .max(255)
+  .regex(/^[A-Za-z0-9_.-]+(?:\/[A-Za-z0-9_.-]+)+$/)
+  .refine(
+    (value) => value.split("/").every((segment) => segment !== "." && segment !== ".."),
+    "Project path cannot contain relative path segments",
+  );
+
+export const provisioningOperationStateSchema = z.enum([
+  "requested",
+  "authorized",
+  "dispatched",
+  "running",
+  "succeeded",
+  "failed",
+  "partially_failed",
+  "unknown",
+  "cancelled",
+  "expired",
+]);
+
+export const provisioningStageSchema = z.enum([
+  "authorization",
+  "gitlab_runner_creation",
+  "host_preparation",
+  "runner_registration",
+  "verification",
+  "first_observation",
+]);
+
+export const projectRunnerProvisioningRequestSchema = z.object({
+  idempotencyKey: z.uuid(),
+  projectRefId: z.string().min(1).max(120),
+  reason: safeDiagnosticTextSchema,
+  templateRevisionId: z.string().min(1).max(120),
+}).strict();
+
+export const provisioningOperationSchema = z.object({
+  correlationId: z.uuid(),
+  id: z.string().min(1).max(120),
+  projectRefId: z.string().min(1).max(120),
+  requestedAt: z.iso.datetime(),
+  state: provisioningOperationStateSchema,
+  templateRevisionId: z.string().min(1).max(120),
+}).strict();
+
+export const runnerTemplatePolicySchema = z.object({
+  concurrency: z.literal(1),
+  jobNetworkPerBuild: z.literal(true),
+  jobVolumes: z.tuple([z.literal("/cache")]),
+  managerNetwork: z.literal("host"),
+  privileged: z.literal(false),
+  scope: z.literal("project"),
+  tags: z.array(z.string().min(1).max(80).regex(/^[A-Za-z0-9_.-]+$/)).min(1).max(20),
+}).strict();
+
 export type Actor = z.infer<typeof actorSchema>;
 export type CheckObservation = z.infer<typeof checkObservationSchema>;
 export type DriftFinding = z.infer<typeof driftFindingSchema>;
@@ -148,5 +205,10 @@ export type GitLabRunnerState = z.infer<typeof gitlabRunnerStateSchema>;
 export type HealthState = z.infer<typeof healthStateSchema>;
 export type HostAgentObservation = z.infer<typeof hostAgentObservationSchema>;
 export type HostAgentStackObservation = z.infer<typeof hostAgentStackObservationSchema>;
+export type ProjectRunnerProvisioningRequest = z.infer<typeof projectRunnerProvisioningRequestSchema>;
+export type ProvisioningOperation = z.infer<typeof provisioningOperationSchema>;
+export type ProvisioningOperationState = z.infer<typeof provisioningOperationStateSchema>;
+export type ProvisioningStage = z.infer<typeof provisioningStageSchema>;
 export type Role = z.infer<typeof roleSchema>;
 export type RunnerStackObservation = z.infer<typeof runnerStackObservationSchema>;
+export type RunnerTemplatePolicy = z.infer<typeof runnerTemplatePolicySchema>;

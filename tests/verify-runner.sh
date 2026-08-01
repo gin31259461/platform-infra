@@ -5,7 +5,7 @@ SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=scripts/lib/stack.sh
 source "${SCRIPT_DIR}/../scripts/lib/stack.sh"
 
-resolve_stack "${1:-}"
+resolve_stack_request "${1:-}" "${2:-}"
 require_stack_config
 
 runner_user="$(yaml_value runner.user)"

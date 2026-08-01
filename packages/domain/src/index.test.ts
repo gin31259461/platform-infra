@@ -59,11 +59,23 @@ describe("Runner Stack health", () => {
   it("never reports a stale GitLab observation as current", () => {
     expect(evaluateRunnerStack({
       ...observation,
-      gitlabObservedAt: "2026-07-31T08:58:00.000Z",
+      gitlabObservedAt: "2026-07-31T08:54:00.000Z",
     }, new Date("2026-07-31T09:00:00.000Z"))).toMatchObject({
       gitlabFreshness: "stale",
       gitlabState: "unknown",
       state: "healthy",
+    });
+  });
+
+  it("uses independent Host and GitLab freshness thresholds", () => {
+    expect(evaluateRunnerStack({
+      ...observation,
+      gitlabObservedAt: "2026-07-31T08:56:30.000Z",
+      observedAt: "2026-07-31T08:59:00.000Z",
+    }, new Date("2026-07-31T09:00:00.000Z"))).toMatchObject({
+      freshness: "fresh",
+      gitlabFreshness: "fresh",
+      gitlabState: "online",
     });
   });
 

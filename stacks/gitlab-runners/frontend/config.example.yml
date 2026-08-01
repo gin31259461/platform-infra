@@ -8,7 +8,7 @@ stack:
 gitlab:
   url: https://REPLACE_WITH_GITLAB_HOSTNAME
   hostname: REPLACE_WITH_GITLAB_HOSTNAME
-  health_url: https://REPLACE_WITH_GITLAB_HOSTNAME/-/health
+  health_url: https://REPLACE_WITH_GITLAB_HOSTNAME/users/sign_in
 
 runner:
   name: A-frontend-podman

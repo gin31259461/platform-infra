@@ -5,7 +5,7 @@ SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=scripts/lib/stack.sh
 source "${SCRIPT_DIR}/../scripts/lib/stack.sh"
 
-resolve_stack "${1:-}"
+resolve_stack_request "${1:-}" "${2:-}"
 config_to_validate="${STACK_EXAMPLE_CONFIG}"
 reject_placeholders=false
 if [[ -f ${STACK_CONFIG} ]]; then
@@ -14,7 +14,7 @@ if [[ -f ${STACK_CONFIG} ]]; then
 fi
 
 CONFIG_TO_VALIDATE="${config_to_validate}" \
-REJECT_PLACEHOLDERS="${reject_placeholders}" python - <<'PY'
+REJECT_PLACEHOLDERS="${reject_placeholders}" uv run --locked python - <<'PY'
 import os
 import ipaddress
 import re

@@ -5,7 +5,7 @@ PROJECT_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 TEST_TMPDIR="$(mktemp -d)"
 trap 'rm -rf -- "${TEST_TMPDIR}"' EXIT
 
-PROJECT_ROOT="${PROJECT_ROOT}" TEST_TMPDIR="${TEST_TMPDIR}" python - <<'PY'
+PROJECT_ROOT="${PROJECT_ROOT}" TEST_TMPDIR="${TEST_TMPDIR}" uv run --locked python - <<'PY'
 import os
 import subprocess
 import sys

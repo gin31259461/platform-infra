@@ -20,7 +20,7 @@ export function HealthChip({ state }: { state: HealthState }) {
         </Box>
       )}
       size="small"
-      sx={{ borderRadius: "4px", fontSize: 11, fontWeight: 750, height: 22, textTransform: "capitalize" }}
+      sx={{ borderRadius: 1, fontSize: 11, fontWeight: 600, height: 22, textTransform: "capitalize" }}
       variant={state === "unknown" ? "outlined" : "filled"}
     />
   );

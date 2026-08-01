@@ -1,108 +1,127 @@
 # Architecture
 
-## Control Plane vertical slice
-
-The first Control Plane implementation is read-only and keeps replaceable
-adapters behind versioned contracts and domain rules:
+## Topology
 
 ```text
-Next.js pages
-  |-- /                     Overview
-  |-- /runners              Runner inventory
-  `-- /runners/<stack-id>   Boundary evidence and Drift
-             |
-             v
-       tRPC viewer procedure
-             |
-             |-- RBAC: fleet:read
-             |-- health and freshness reasoning
-             `-- FleetRepository
-                    |-- FakeFleetRepository (local default)
-                    `-- PrismaFleetRepository
-                              ^
-                              | latest immutable Host + GitLab observations
-POST /api/v1/observations ---+--- PostgreSQL <--- GitLab sync CLI
-          ^
-          | Host+Stack-bound Bearer credential + strict v1 contract
-       packaged Host Agent
+A: GitLab
+   ^                      C: Browser
+   | VPN + verified HTTPS    |
+   |                         | trusted HTTPS
+   |                         v
+B: Arch Runner Host + Next.js Control Plane
+   |-- PostgreSQL
+   |-- GitLab connector
+   |-- Host Provisioning CLI
+   `-- isolated Runner Stack(s)
+         |-- dedicated Linux user
+         |-- systemd user + Quadlet
+         |-- rootless Podman Runner manager
+         `-- read-only Host Agent
 ```
 
-`packages/contracts` owns the versioned observation shape.
-`packages/domain` derives health, refuses to report stale observations as
-healthy, and enforces role permissions. `apps/web` owns delivery concerns,
-the browser-facing tRPC API, adapters, and PostgreSQL persistence boundary.
+GitLab initiates no inbound Host connection. Runner managers poll GitLab over
+host networking to use the externally managed VPN. CI jobs receive isolated
+per-build networks and never receive host networking or the Podman socket.
 
-The checked-in Prisma schema and migrations cover Control Plane identity,
-roles, Runner Hosts, Host+Stack-bound Agent credentials, Runner Stacks, Runner
-Record references, immutable Observations, and Audit Events. PostgreSQL mode
-independently reads the latest Host Agent and GitLab observation for each
-enrolled Stack. The Host Agent contract cannot submit GitLab-owned fields.
+## Control Plane data flow
 
-The read-only GitLab connector runs outside Web requests. It reads a dedicated
-`read_api` token from standard input and queries GraphQL only for exact Runner
-Record IDs already present in PostgreSQL. It selects status, pause state, last
-contact, and job-execution status, then appends normalized `GITLAB`
-observations. It has no list query or mutation. Authentication and rate-limit
-failures stop one sync run without replacing the last successful observation;
-Host observations remain independent.
+```text
+Host Agent -- scoped v1 observations --> PostgreSQL
+GitLab connector -- exact-ID reads ----> PostgreSQL
+                                             |
+                                             v
+                               domain freshness + health
+                                             |
+                                             v
+                                  tRPC --> Next.js pages
+```
 
-Observation ingestion is disabled by default. When enabled, the route accepts
-at most 64 KiB, authenticates before parsing the body, binds the report's Host
-ID and single Stack ID to the credential, accepts only registered identities, rejects
-token-shaped diagnostics, and deduplicates by delivery ID. It performs no
-host, GitLab, Ansible, systemd, or Podman operation.
+`packages/contracts` owns versioned boundary schemas.
+`packages/domain` evaluates health and freshness without fabricating unknown
+values. `apps/web` owns transport, Prisma persistence, GitLab adapters, and UI.
 
-The Python Host Agent runs as one dedicated Runner user and reports one Runner
-Stack. It reads its credential from a fixed `0600` file and keeps at most one
-bounded pending observation in a `0700` state directory so retries preserve
-the delivery ID. It invokes only fixed `systemctl --user` checks, inspects file
-metadata without reading `config.toml`, and checks for the Podman socket
-without opening it. It cannot receive Operations and does not have a generic
-command or filesystem-path interface.
+The Web runtime has only the PostgreSQL fleet repository. Missing inventory is
+rendered as no data. Host and GitLab observations are immutable, independently
+timestamped, and independently stale.
 
-The Agent requires an HTTPS Control Plane origin by default. For isolated
-same-Host staging only, `allowPlaintextLoopback` may permit a literal
-`127.0.0.1` or `::1` HTTP origin. The Web development and start commands bind
-to `127.0.0.1`; the exception never permits a LAN or Tailscale address.
+## Server lifecycle
 
-## Runner host runtime
+The start supervisor completes one GitLab synchronization before opening the
+Next.js listener, then runs serial synchronization until shutdown. A
+target-specific GitLab failure preserves earlier evidence; missing credentials,
+invalid configuration, or database failure stop startup.
 
-Each stack expresses workload-specific values while shared Ansible roles own
-host, user, Podman, systemd, network, TLS, and Runner manager behavior.
-The pinned `network.validation_image` belongs to that shared infrastructure
-layer and is used only for container-level connectivity diagnostics.
+Host checks never run inside Next.js. Each Agent polls a credential-scoped
+refresh decision every five seconds. The server requests a report when Host
+evidence is missing or stale and, by default, once after every Control Plane
+start. The browser refreshes visible pages every ten seconds.
+
+## Host Agent
+
+One Agent belongs to one Runner user and one Runner Stack. It runs from a
+package-free per-user `.venv` with Python isolated mode and reports fixed
+checks for VPN, DNS, TLS, systemd, Podman socket presence, Runner manager,
+Runner config metadata, and GitLab HTTPS connectivity.
+
+The Agent:
+
+- reads its scoped credential from a fixed `0600` file;
+- keeps at most one bounded pending observation in a `0700` state directory;
+- retries the same delivery ID before collecting again;
+- never opens the Podman socket or reads `config.toml` contents;
+- cannot receive commands, paths, or Operations.
+
+## Runner Stack runtime
+
+Stack configuration feeds one shared Ansible playbook:
 
 ```text
 stacks/gitlab-runners/<workload>/config.yml
-                     |
-                     v
+                    |
+                    v
 playbooks/gitlab-runner.yml
-  |-- common/preflight
-  |-- common/arch_packages
-  |-- gitlab_runner/runner_user
-  |-- common/systemd_user
-  |-- common/rootless_podman
-  |-- common/network_validation
-  |-- common/tls_validation
-  |-- gitlab_runner/runner_manager
-  `-- gitlab_runner/runner_validation
+  |-- preflight, packages, and network/TLS validation
+  |-- dedicated Runner user and systemd user manager
+  |-- rootless Podman
+  |-- Quadlet Runner manager
+  `-- post-install validation
 ```
 
-GitLab initiates no inbound connection to the host. The manager polls GitLab
-over host networking so it inherits the manually managed VPN route and DNS.
-Job containers use per-build networking and do not inherit host networking.
+The Linux user is the isolation unit. It owns subordinate IDs, rootless
+storage, services, Runner token, config, and cache. Stack identities, users,
+containers, services, credentials, and caches must never be shared.
 
-The dedicated Linux user is the isolation unit. It owns its home, subordinate
-UID/GID ranges, rootless storage, Podman API socket, user services, Runner
-configuration, token, and cache. Stacks with different trust levels must use
-different users and credentials.
+Runner managers mount the user's Podman socket at
+`/run/podman/podman.sock`. Job volumes are limited to `/cache`, concurrency is
+one, and privileged mode is disabled.
 
-The manager receives the Podman socket at `/run/podman/podman.sock` and tells
-the Docker executor to use that endpoint. Job volumes contain only `/cache`.
-Increasing concurrency or adding a deployment Runner requires a separate
-security and capacity review.
+## Project provisioning
 
-The .NET stack starts SQL Server only as a per-build service container. It
-shares the job's isolated network, is not published on the host, and receives
-neither the Runner manager's host network nor the Podman socket. SDK, runtime,
-and SQL Server versions are selected by pinned consumer-pipeline image tags.
+`pnpm runner:provision` is an operator-only CLI saga:
+
+1. resolve an allowlisted Project and approved Runner Template;
+2. create a durable authorized Operation;
+3. derive an isolated Stack identity and owner-only config;
+4. install the local Runner manager through fixed Ansible automation;
+5. create an initially paused project-scoped GitLab Runner Record;
+6. hand its one-time token directly to registration;
+7. persist Stack-to-Record correlation and redacted events;
+8. install a scoped Host Agent for immediate observation.
+
+Project paths are selected from an administrator-owned allowlist. Callers
+cannot supply a filesystem path, Linux user, service, container name, or
+Runner Record ID. GitLab creation uses a credential separate from monitoring.
+
+Provisioning is not one transaction. A partial failure remains visible and
+requires operator review. The platform never deletes or unregisters a GitLab
+Runner Record as compensation.
+
+## Uninstall
+
+`make uninstall` is a local destructive boundary. After exact confirmation it
+stops the Runner manager and Agent, removes the container, disables lingering,
+terminates the user manager, deletes the Linux user and home, and removes a
+generated instance config when applicable.
+
+Uninstall does not contact GitLab. Runner Record pause or deletion is always a
+separate manual decision.

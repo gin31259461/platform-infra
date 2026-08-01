@@ -1,30 +1,36 @@
 # Host Agent
 
-The Host Agent is a Python 3 standard-library executable that runs as the
-dedicated Runner Linux user. One Agent instance reports one Runner Stack. If a
-host has multiple isolated Runner users, give each instance a separate Agent
-credential bound to its Stack and the same enrolled Host; do not copy one
-secret between trust boundaries.
+The Host Agent is a read-only Python standard-library process installed for
+one Runner user and one Runner Stack. Each Stack receives a different scoped
+credential, even when several Stacks share a physical Host.
 
-The Agent is read-only. It performs fixed checks for:
+## Checks
 
-- VPN interface presence under `/sys/class/net`;
-- DNS resolution and HTTPS/TLS verification for the configured GitLab host;
-- the systemd user manager and fixed Runner Manager service;
-- existence of the rootless Podman socket without opening it;
-- existence, ownership, and exact `0600` mode of `config.toml` without reading
-  its contents.
+- VPN interface presence
+- GitLab DNS resolution
+- verified GitLab TLS and HTTPS connectivity
+- systemd user manager state
+- Podman socket presence without opening it
+- Runner manager service state
+- `config.toml` ownership, type, and exact `0600` mode without reading it
 
-Runner version, running job count, and Drift are reported as unknown because
-collecting them would currently require opening the Podman socket or reading
-additional runtime configuration. The UI must preserve that distinction.
+Runner version, running jobs, and Drift remain unknown because the Agent does
+not open the Podman socket or read token-bearing Runner configuration.
+
+## Scheduling
+
+The systemd timer polls authenticated `GET /api/v1/observations/refresh` every
+five seconds. Polling runs no Host checks unless the server responds with
+`missing`, `stale`, or `startup`. Startup refresh is enabled by default.
+
+The response cannot contain an Operation, command, or path. Observations are
+sent to `POST /api/v1/observations` with one Host-and-Stack-bound credential.
+A bounded local outbox preserves the delivery UUID across transient failures.
 
 ## Files
 
-The executable accepts no command-line paths or commands. It uses these fixed
-locations under the Runner user's home:
-
 ```text
+~/.local/share/gitlab-runner-platform/venv/bin/python
 ~/.local/lib/gitlab-runner-platform/gitlab_runner_agent.py
 ~/.config/gitlab-runner-platform/agent.json
 ~/.config/gitlab-runner-platform/credential
@@ -32,25 +38,28 @@ locations under the Runner user's home:
 ~/.config/systemd/user/gitlab-runner-platform-agent.{service,timer}
 ```
 
-The credential and outbox must be owned by the Runner user with mode `0600`.
-The configuration must not be group- or world-writable. The outbox preserves
-one delivery ID across transient failures and is removed only after HTTP `200`
-or `202` acknowledgement.
+The installer creates a package-free `.venv`; systemd runs it with Python
+isolated mode. Credential and pending files use `0600`; state and credential
+directories use `0700`.
 
-## Staging installation
+## Install or rotate
 
-The preferred same-Host staging workflow needs only the canonical Stack. It
-resolves the unique enrolled Host and Stack from PostgreSQL, generates a
-256-bit secret without printing it, installs the scoped Agent through ordinary
-sudo policy, enables the systemd user timer, and revokes superseded Stack
-credentials only after installation succeeds.
+Same-host staging:
 
 ```bash
 pnpm host:bootstrap-agent --stack gitlab-runners/frontend
 ```
 
-The default Control Plane origin is `http://127.0.0.1:3000`, which activates
-the explicit same-Host staging exception. For HTTPS, supply an origin:
+Provisioned instance:
+
+```bash
+pnpm host:bootstrap-agent \
+  --stack gitlab-runners/dotnet \
+  --stack-id dotnet-REPLACE_WITH_12_HEX
+```
+
+The default origin is the explicit same-host exception
+`http://127.0.0.1:3000`. Cross-host Agents require verified HTTPS:
 
 ```bash
 pnpm host:bootstrap-agent \
@@ -58,44 +67,15 @@ pnpm host:bootstrap-agent \
   --control-plane-url https://runner-platform.example.invalid
 ```
 
-The generated configuration is equivalent to this staging excerpt:
+Bootstrap generates the secret in memory, stores only its digest in
+PostgreSQL, streams it to the Runner user's fixed file, and revokes superseded
+credentials after successful installation. It never prints the secret.
 
-```json
-{
-  "allowPlaintextLoopback": true,
-  "controlPlaneUrl": "http://127.0.0.1:3000"
-}
-```
-
-Those fields are excerpts, not a complete configuration. Plaintext accepts
-only literal `127.0.0.1` or `::1`; `localhost`, LAN, and Tailscale addresses
-remain rejected. Keep `allowPlaintextLoopback` false for HTTPS and every
-cross-host deployment. Do not disable certificate verification.
-
-For an externally managed secret, the lower-level installer remains available
-as an advanced workflow:
-
-```bash
-read -rs HOST_AGENT_SECRET
-printf '%s' "${HOST_AGENT_SECRET}" | \
-  STACK=gitlab-runners/frontend \
-  HOST_ID=host-01 \
-  RUNNER_STACK_ID=frontend-main \
-  CREDENTIAL_ID=hac_REPLACE_WITH_CREDENTIAL_ID \
-  CONTROL_PLANE_URL=https://runner-platform.example.invalid \
-  make install-agent
-unset HOST_AGENT_SECRET
-```
-
-Both workflows may prompt for sudo but never read a sudo password themselves.
-They never put the Agent secret in arguments, environment variables, or
-temporary files.
-
-## Validation
+## Validate
 
 ```bash
 make test-agent
 ```
 
-No test opens a real Podman socket, changes systemd state, contacts GitLab, or
-sends a live credential.
+Tests do not change systemd, contact GitLab, open Podman, or use live
+credentials.

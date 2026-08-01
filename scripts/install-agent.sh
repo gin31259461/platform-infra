@@ -4,7 +4,7 @@ set -Eeuo pipefail
 # shellcheck source=scripts/lib/stack.sh
 source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)/lib/stack.sh"
 
-resolve_stack "${STACK:-}"
+resolve_stack_request "${STACK:-}" "${STACK_INSTANCE_ID:-}"
 require_stack_config
 
 runner_stack_id=${RUNNER_STACK_ID:-}
@@ -29,6 +29,7 @@ gitlab_hostname="$(yaml_value gitlab.hostname)"
 vpn_interface="$(yaml_value network.vpn_interface)"
 workload="${STACK_NAME#gitlab-runners/}"
 runner_home="/home/${runner_user}"
+agent_venv="${runner_home}/.local/share/gitlab-runner-platform/venv"
 runner_uid="$(id -u "${runner_user}" 2>/dev/null)" || die "Runner user does not exist; run make install first."
 
 case ${workload} in
@@ -55,10 +56,14 @@ import os
 
 import yaml
 
-from agent.gitlab_runner_agent import parse_config
+from agent.gitlab_runner_agent import parse_config, parse_gitlab_health_url
 
 with open(os.environ["CONFIG_PATH"], encoding="utf-8") as stream:
     stack_config = yaml.safe_load(stream)
+
+gitlab_hostname, gitlab_health_path = parse_gitlab_health_url(stack_config["gitlab"]["health_url"])
+if gitlab_hostname != os.environ["AGENT_GITLAB_HOSTNAME"]:
+    raise ValueError("GitLab health URL hostname does not match gitlab.hostname")
 
 value = {
     "allowPlaintextLoopback": os.environ["AGENT_ALLOW_PLAINTEXT_LOOPBACK"] == "true",
@@ -68,8 +73,8 @@ value = {
     "hostId": os.environ["AGENT_HOST_ID"],
     "requestTimeoutSeconds": 10,
     "stack": {
-        "gitlabHealthPath": "/-/health",
-        "gitlabHostname": os.environ["AGENT_GITLAB_HOSTNAME"],
+        "gitlabHealthPath": gitlab_health_path,
+        "gitlabHostname": gitlab_hostname,
         "id": os.environ["AGENT_RUNNER_STACK_ID"],
         "runnerService": os.environ["AGENT_RUNNER_SERVICE"],
         "stackName": os.environ["AGENT_STACK_NAME"],
@@ -88,7 +93,16 @@ as_root install -d -o "${runner_user}" -g "${runner_user}" -m 0700 \
   "${runner_home}/.local/state/gitlab-runner-platform"
 as_root install -d -o "${runner_user}" -g "${runner_user}" -m 0755 \
   "${runner_home}/.local/lib/gitlab-runner-platform" \
+  "${runner_home}/.local/share/gitlab-runner-platform" \
   "${runner_home}/.config/systemd/user"
+if [[ ! -x ${agent_venv}/bin/python ]]; then
+  as_runner_user "${runner_user}" "${runner_uid}" \
+    /usr/bin/python -m venv --without-pip "${agent_venv}"
+fi
+as_runner_user "${runner_user}" "${runner_uid}" \
+  "${agent_venv}/bin/python" -I -c \
+  'import pathlib, sys; expected = pathlib.Path(sys.argv[1]).resolve(); assert pathlib.Path(sys.prefix).resolve() == expected' \
+  "${agent_venv}" || die "Host Agent virtual environment is invalid."
 as_root install -o "${runner_user}" -g "${runner_user}" -m 0755 \
   "${PROJECT_ROOT}/agent/gitlab_runner_agent.py" \
   "${runner_home}/.local/lib/gitlab-runner-platform/gitlab_runner_agent.py"

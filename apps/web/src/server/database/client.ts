@@ -7,7 +7,7 @@ const globalDatabase = globalThis as unknown as { prisma?: PrismaClient };
 export function getPrismaClient(): PrismaClient {
   const connectionString = process.env.DATABASE_URL;
   if (!connectionString) {
-    throw new Error("DATABASE_URL is required for PostgreSQL mode");
+    throw new Error("DATABASE_URL is required");
   }
 
   if (!globalDatabase.prisma) {

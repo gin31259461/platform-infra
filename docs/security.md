@@ -1,110 +1,100 @@
 # Security
 
-## Required controls
+## Runner baseline
 
-- Use only a project-scoped Runner created manually in GitLab.
-- Lock the Runner to that project and disable untagged jobs.
-- Use a dedicated Linux user and rootless Podman.
-- Keep privileged mode disabled and concurrency at one.
-- Mount the Podman socket only into the Runner manager.
-- Keep job volumes limited to `/cache`.
-- Use registry-qualified, pinned manager and job images.
-- Keep narrow registry and repository allowlists for job and service images.
-- Validate VPN, DNS, and TLS from both host and container.
-- Install a public CA certificate when needed; never disable TLS verification.
-- Keep `config.yml`, `config.toml`, tokens, VPN credentials, and private keys
-  out of Git.
-- Use a new Project Runner identity during migration.
-- Keep deployment credentials and Runners separate from build Runners.
+- Project scope only; lock each Runner to its Project and disable untagged jobs.
+- One dedicated Linux user, service, container, token, config, cache, and
+  rootless Podman store per Runner Stack.
+- Concurrency one and privileged mode disabled.
+- Podman socket mounted only into the Runner manager, never CI jobs.
+- Job volumes limited to `/cache` and per-build networking enabled.
+- Registry-qualified pinned images with narrow repository allowlists.
+- Verified DNS, TLS, and VPN reachability from Host and container.
+- Separate deployment Runners from build Runners.
 
-Registration streams the token from `GITLAB_RUNNER_TOKEN` over standard input
-to a short-lived manager shell, which exports the Runner CLI's expected
-variable. The value is not placed in Podman command arguments. Scripts do not
-enable shell tracing, print the token, write it to a temporary file, or delete
-a failed registration.
+Never disable TLS verification, use `curl -k`, enable Docker, mount host paths
+into jobs, or store VPN credentials in this repository.
 
-Normal uninstall preserves the token-bearing config with mode `0600`. Purge
-requires explicit confirmation. Removing the corresponding Runner from GitLab
-remains a manual UI operation.
+## Secrets
 
-## Control Plane observations
+Do not commit or print real Stack config, `.env`, `config.toml`, tokens,
+private keys, or files under `secrets/`.
 
-The Host Agent observation endpoint is disabled unless
-`PLATFORM_OBSERVATION_INGESTION=enabled` is explicitly set. Agent credentials
-are unique to one enrolled Runner Host and Runner Stack. PostgreSQL stores only
-a SHA-256 digest of the high-entropy credential secret; bootstrap commands read
-the secret from standard input and return only the non-secret credential ID.
+Runner authentication tokens enter through stdin and are streamed into a
+short-lived manager process. GitLab access tokens are installed once into an
+owner-only directory and loaded by purpose. Agent secrets are unique to one
+Host and Stack; PostgreSQL stores only their SHA-256 digest.
 
-`POST /api/v1/observations` authenticates before parsing its bounded request
-body. The authenticated Host and single Runner Stack identities must match the
-credential scope, the Stack must already belong to that Host, and delivery IDs are
-idempotency keys. The strict contract excludes GitLab-owned state, arbitrary
-paths, unknown fields, and known token-shaped diagnostic values. Accepted and
-duplicate deliveries create redacted audit events.
+Token-handling code must not use shell tracing, command arguments, temporary
+files, environment files, browser storage, database payloads, logs, or audit
+events.
 
-This is an ingestion boundary, not a remote-management channel. It cannot run
-shell commands, invoke Ansible, access systemd or Podman, contact the GitLab
-API, or receive a GitLab Runner authentication token. TLS termination remains
-a deployment requirement for every cross-host connection. Isolated staging
-may explicitly allow HTTP only to literal `127.0.0.1` or `::1` when Agent and
-Control Plane are on the same Host. Hostnames, LAN addresses, and Tailscale
-addresses remain HTTPS-only; certificate verification is never disabled.
+## Browser boundary
 
-The packaged Agent runs as the existing dedicated Runner user, not root. Each
-isolated Runner user receives a different Agent credential even when several
-Stacks share one physical Host identity. An unscoped legacy credential fails
-authentication and must be replaced. The Agent accepts no command-line
-paths or commands. Its systemd user service applies `NoNewPrivileges`, a
-read-only home and system filesystem, a narrow writable state directory, and
-restricted address families.
+The monitoring UI has no application login. Network access therefore grants
+visibility to Runner inventory and observations. Next.js binds to loopback;
+cross-host access requires trusted networking or a reverse proxy with verified
+HTTPS.
 
-The staging installer resolves only canonical Stack names, renders a strict
-configuration from the registered Stack values, and writes the Agent secret
-from standard input directly to its fixed `0600` destination. The secret is
-never passed through command arguments, environment variables, or a temporary
-file. Installation requires explicit Host mutation authorization and ordinary
-sudo policy; it never handles or works around a sudo password.
+The browser exposes no provisioning or Host mutation route. GitLab access
+tokens are platform credentials, not user authentication.
 
-The preferred same-Host staging bootstrap generates a 256-bit secret in
-process memory, stores only its digest in PostgreSQL, and sends the original
-only through the installer's standard input. It passes a minimal environment
-to the child installer, excluding database and GitLab configuration. A failed
-install revokes the newly issued credential; a successful install revokes
-older active credentials for that Stack. Neither path prints the secret.
+## Observation boundary
 
-The Agent never opens the Podman socket and never reads `config.toml`; it only
-checks their type, ownership, and permissions. Consequently Runner version,
-running job count, and Drift remain explicitly unknown until a separately
-reviewed safe source exists. Unknown evidence must not be rendered as zero,
-no Drift, or a known version.
+Observation ingestion is disabled unless
+`PLATFORM_OBSERVATION_INGESTION=enabled`.
 
-## Read-only GitLab connector
+`POST /api/v1/observations`:
 
-The connector uses a dedicated GitLab access token with only `read_api`, not a
-Runner authentication token, `manage_runner`, or `api`. It accepts the token
-only from standard input and never stores it, includes it in command
-arguments, or emits it in output. Production scheduling must supply that same
-boundary through an approved secret store.
+- authenticates before parsing;
+- accepts at most 64 KiB;
+- binds one report to the credential's Host and Stack;
+- rejects unknown fields and token-shaped diagnostics;
+- deduplicates by delivery UUID.
 
-Only numeric Runner Record IDs already correlated in PostgreSQL can become
-query targets. The GraphQL document selects five fixed read-only fields from
-one exact Runner and contains no project/Runner list or mutation. Responses
-are bounded and structurally parsed; redirects and non-HTTPS base URLs are
-rejected. Audit events contain only explicit target IDs and stable failure
-reason codes, not GraphQL errors, HTTP bodies, headers, or exception text.
+`GET /api/v1/observations/refresh` uses the same credential and reads only the
+latest Host timestamp. It returns one of `current`, `missing`, `stale`, or
+`startup` plus a boolean. It cannot transport commands or paths.
 
-The bootstrap-only discovery CLI is the sole list exception. It reads the
-same dedicated token from standard input, requests only project Runners with
-the supported `frontend,podman` or `dotnet,podman` tag pairs, follows at most
-ten pages per workload, and enriches only those exact candidate IDs with their
-associated project paths. It rejects control characters and never persists or
-automatically enrolls a candidate.
+Agents run as the Runner user from a package-free `.venv` with `-I`.
+Systemd applies `NoNewPrivileges`, read-only home/system access except the
+bounded state directory, and restricted address families. The Agent never
+opens the Podman socket or reads Runner token-bearing content.
 
-Pause/resume and other GitLab writes require a separate credential, adapter,
-authorization model, and review. The read connector must not be expanded to
-reuse a broader token merely to prepare for those later operations.
+Plain HTTP is allowed only for explicit same-host staging on literal
+`127.0.0.1` or `::1`. LAN, hostname, and Tailscale origins require verified
+HTTPS.
 
-The .NET stack permits only `mcr.microsoft.com/mssql/server:*` as a CI service.
-SQL Server runs without privilege on the per-build network and is not exposed
-on the host. NuGet source credentials belong in masked GitLab CI/CD variables,
-never source URLs, stack configuration, or committed `NuGet.Config` files.
+## GitLab monitoring
+
+The connector uses a dedicated token with only `read_api`. It queries only
+numeric Runner Record IDs already correlated in PostgreSQL through a fixed,
+bounded GraphQL document. It contains no mutation or general list query.
+
+Discovery is the only list exception. It filters supported tag pairs, follows
+bounded pagination, and persists nothing until an explicit import.
+
+## Project provisioning
+
+Provisioning uses a separate credential with only `create_runner`. The target
+Project must be in the administrator-owned allowlist. The platform derives
+all local identities and paths from its Operation UUID.
+
+GitLab returns a one-time Runner authentication token. The adapter hands it
+directly to registration in memory; only the installed `0600` Runner config
+retains it. An ambiguous or partial remote result is not automatically retried
+or compensated.
+
+New Runner Records start paused, locked to the Project, tagged, and unable to
+run untagged jobs. The CLI never unpauses or deletes them.
+
+## Destructive local uninstall
+
+Uninstall requires an interactive terminal and exact target confirmation. It
+permanently removes the B-side Runner user and data. Targets are resolved from
+canonical Template names and validated platform instance IDs; caller-supplied
+paths are rejected.
+
+The corresponding GitLab Runner Record is always preserved. Do not add
+automatic unregister or delete behavior to cleanup, rollback, diagnosis, or
+provisioning compensation.

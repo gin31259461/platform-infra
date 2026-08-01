@@ -1,7 +1,7 @@
 import type { FleetSnapshot } from "@gitlab-runner-platform/contracts";
 import { describe, expect, it } from "vitest";
 
-import { createRequestContext, resolveDevelopmentActor } from "./context";
+import { createRequestContext, resolveFreshnessPolicy } from "./context";
 import { appRouter } from "./router";
 
 const emptySnapshot: FleetSnapshot = {
@@ -11,10 +11,9 @@ const emptySnapshot: FleetSnapshot = {
 };
 
 describe("Control Plane API", () => {
-  it("fails closed when the development identity reaches production", () => {
-    expect(() => resolveDevelopmentActor("production", "development-stub")).toThrow(
-      "Production authentication is not configured",
-    );
+  it("rejects invalid freshness configuration", () => {
+    expect(() => resolveFreshnessPolicy("29", "300")).toThrow("between 30 and 86400 seconds");
+    expect(() => resolveFreshnessPolicy("90", "five-minutes")).toThrow("positive integer");
   });
 
   it("returns structured fleet state to a Viewer", async () => {
@@ -30,7 +29,11 @@ describe("Control Plane API", () => {
   });
 
   it("denies fleet state when no actor is authenticated", async () => {
-    const caller = appRouter.createCaller(createRequestContext({ actor: null }));
+    const caller = appRouter.createCaller(createRequestContext({
+      actor: null,
+      fleetRepository: { getSnapshot: async () => emptySnapshot },
+    }));
     await expect(caller.fleet.list()).rejects.toMatchObject({ code: "UNAUTHORIZED" });
   });
+
 });

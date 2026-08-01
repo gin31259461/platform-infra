@@ -11,8 +11,8 @@ export const metadata: Metadata = {
   description: "Observe and operate self-hosted GitLab Runners safely",
 };
 
-// Observations and authorization are request-scoped. Never freeze them into a
-// static build artifact, even while the repository uses fake adapters.
+// Observations and authorization are request-scoped. Never freeze PostgreSQL
+// state into a static build artifact.
 export const dynamic = "force-dynamic";
 
 export default function RootLayout({ children }: Readonly<{ children: ReactNode }>) {

@@ -37,7 +37,15 @@ export function authorize(actor: Actor, permission: Permission): void {
   }
 }
 
-export const defaultFreshnessThresholdMs = 60_000;
+export type FreshnessPolicy = {
+  gitlabMs: number;
+  hostMs: number;
+};
+
+export const defaultFreshnessPolicy: FreshnessPolicy = {
+  gitlabMs: 300_000,
+  hostMs: 90_000,
+};
 
 export type EvaluatedRunnerStack = Omit<RunnerStackObservation, "gitlabState"> & {
   freshness: "fresh" | "stale";
@@ -49,17 +57,17 @@ export type EvaluatedRunnerStack = Omit<RunnerStackObservation, "gitlabState"> &
 export function evaluateRunnerStack(
   observation: RunnerStackObservation,
   now: Date,
-  freshnessThresholdMs = defaultFreshnessThresholdMs,
+  freshnessPolicy = defaultFreshnessPolicy,
 ): EvaluatedRunnerStack {
   const observedAt = observation.observedAt === null ? null : new Date(observation.observedAt);
-  const freshness = observedAt === null || now.getTime() - observedAt.getTime() > freshnessThresholdMs
+  const freshness = observedAt === null || now.getTime() - observedAt.getTime() > freshnessPolicy.hostMs
     ? "stale"
     : "fresh";
   const gitlabObservedAt = observation.gitlabObservedAt === null
     ? null
     : new Date(observation.gitlabObservedAt);
   const gitlabFreshness = gitlabObservedAt === null
-    || now.getTime() - gitlabObservedAt.getTime() > freshnessThresholdMs
+    || now.getTime() - gitlabObservedAt.getTime() > freshnessPolicy.gitlabMs
     ? "stale"
     : "fresh";
   const gitlabState = gitlabFreshness === "stale" ? "unknown" : observation.gitlabState;
@@ -90,8 +98,12 @@ export type FleetSummary = {
   unknown: number;
 };
 
-export function summarizeFleet(snapshot: FleetSnapshot, now: Date): FleetSummary {
-  const evaluated = snapshot.stacks.map((stack) => evaluateRunnerStack(stack, now));
+export function summarizeFleet(
+  snapshot: FleetSnapshot,
+  now: Date,
+  freshnessPolicy = defaultFreshnessPolicy,
+): FleetSummary {
+  const evaluated = snapshot.stacks.map((stack) => evaluateRunnerStack(stack, now, freshnessPolicy));
 
   return {
     degraded: evaluated.filter((stack) => stack.state === "degraded").length,

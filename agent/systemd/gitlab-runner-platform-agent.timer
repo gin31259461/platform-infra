@@ -1,10 +1,10 @@
 [Unit]
-Description=Report GitLab Runner health every 30 seconds
+Description=Poll for GitLab Runner health refresh requests
 
 [Timer]
-OnBootSec=30s
-OnUnitActiveSec=30s
-RandomizedDelaySec=5s
+OnBootSec=2s
+OnUnitActiveSec=5s
+RandomizedDelaySec=1s
 Persistent=true
 Unit=gitlab-runner-platform-agent.service
 

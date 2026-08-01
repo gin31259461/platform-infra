@@ -7,9 +7,15 @@ their hosts or CI jobs.
 ## Language
 
 **Runner Record**:
-The GitLab-side identity that accepts jobs for a project and reports whether
-it is online, paused, or stale.
+The GitLab-side identity that accepts jobs for one Runner Scope and reports
+whether it is online, paused, or stale.
 _Avoid_: Runner registration, Runner object
+
+**Runner Scope**:
+The GitLab resource allowed to schedule jobs on a Runner Record. The supported
+values are Project, Group, and Instance; the first provisioning release
+supports Project only.
+_Avoid_: Global Runner, repo scope
 
 **Runner Manager**:
 The long-running process that polls GitLab for jobs and creates their job
@@ -21,10 +27,17 @@ A self-managed Linux machine that provides the runtime boundary for one or
 more isolated Runner Stacks.
 _Avoid_: Runner, node, server
 
+**Runner Template**:
+A versioned, reusable workload policy from which Runner Stacks are created,
+such as the supported frontend or .NET policy. A Template is not a deployed
+Runner and contains no Runner authentication token.
+_Avoid_: Runner Stack, Runner type
+
 **Runner Stack**:
-A workload-specific Runner Manager and its dedicated identity, configuration,
-cache, runtime, and trust boundary.
-_Avoid_: Runner type, environment
+A deployed instance created from one Runner Template. It contains one Runner
+Manager and its dedicated host identity, configuration, cache, runtime, and
+trust boundary.
+_Avoid_: Runner Template, environment
 
 **Job Container**:
 An isolated, short-lived container in which one GitLab CI job or service runs.
@@ -36,9 +49,15 @@ and records their outcomes.
 _Avoid_: Dashboard, admin panel, frontend
 
 **Host Agent**:
-The Runner Host participant that reports observations and performs only the
-typed operations authorized by the Control Plane.
-_Avoid_: Shell agent, worker
+The unprivileged Runner Host participant that reports bounded, structured
+observations. It cannot receive Operations or provision Runner Stacks.
+_Avoid_: Shell agent, Host Provisioner
+
+**Host Provisioner**:
+The privileged Runner Host participant that applies an authorized
+Provisioning Operation through fixed local automation. It cannot execute
+caller-supplied commands or filesystem paths.
+_Avoid_: Host Agent, shell agent, generic worker
 
 **Desired State**:
 The approved configuration and lifecycle intent for a Runner Stack.
@@ -56,6 +75,12 @@ _Avoid_: Error, outage
 A typed, authorized request to inspect or change one explicit Runner Stack or
 Runner Record, together with its progress and outcome.
 _Avoid_: Command, script, task
+
+**Provisioning Operation**:
+An Operation that creates one Project Runner Record and one matching Runner
+Stack from an approved Runner Template. It records every stage and preserves
+partial failure for explicit retry or cleanup.
+_Avoid_: Create command, install job
 
 **Fleet**:
 The Runner Hosts, Runner Stacks, and Runner Records governed by one Control

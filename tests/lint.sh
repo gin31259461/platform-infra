@@ -8,8 +8,22 @@ mapfile -t shell_files < <(find "${PROJECT_ROOT}/scripts" "${PROJECT_ROOT}/tests
 mapfile -t yaml_files < <(find "${PROJECT_ROOT}" -type f \
   \( -name '*.yml' -o -name '*.yaml' \) \
   ! -path '*/node_modules/*' \
+  ! -path '*/.venv/*' \
   ! -path '*/.next/*' \
+  ! -path '*/secrets/*' \
+  ! -name 'pnpm-lock.yaml' \
   ! -path '*/stacks/*/config.yml' -print | sort)
+
+command -v shellcheck >/dev/null 2>&1 ||
+  {
+    echo "shellcheck is required." >&2
+    exit 1
+  }
+command -v uv >/dev/null 2>&1 ||
+  {
+    echo "uv is required." >&2
+    exit 1
+  }
 
 for script in "${shell_files[@]}"; do
   bash -n "${script}"
@@ -20,7 +34,7 @@ for script in "${shell_files[@]}"; do
     }
 done
 
-PROJECT_ROOT="${PROJECT_ROOT}" python - <<'PY'
+PROJECT_ROOT="${PROJECT_ROOT}" uv run --locked python - <<'PY'
 import os
 from pathlib import Path
 
@@ -58,27 +72,12 @@ with manager_tasks.open(encoding="utf-8") as stream:
             )
 PY
 
-command -v shellcheck >/dev/null 2>&1 ||
-  {
-    echo "shellcheck is required." >&2
-    exit 1
-  }
 shellcheck -x "${shell_files[@]}"
-
-command -v yamllint >/dev/null 2>&1 ||
-  {
-    echo "yamllint is required." >&2
-    exit 1
-  }
-yamllint -d '{extends: default, rules: {line-length: {max: 140}, truthy: disable}}' \
+uv run --locked yamllint \
+  -d '{extends: default, rules: {document-start: disable, line-length: {max: 140}, truthy: disable}}' \
   "${yaml_files[@]}"
 
-command -v ansible-lint >/dev/null 2>&1 ||
-  {
-    echo "ansible-lint is required." >&2
-    exit 1
-  }
-ansible-lint "${PROJECT_ROOT}/playbooks/gitlab-runner.yml"
+uv run --locked ansible-lint "${PROJECT_ROOT}/playbooks/gitlab-runner.yml"
 
 if rg --hidden --glob '!SPEC.md' --glob '!stacks/**/config.yml' \
   'glrt-[A-Za-z0-9_-]{12,}' "${PROJECT_ROOT}"; then

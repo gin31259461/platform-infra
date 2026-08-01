@@ -1,137 +1,174 @@
-# Control Plane operations
+# Control Plane
 
-This guide covers the read-only PostgreSQL, Host Agent, and GitLab data paths.
-The default UI uses validated fake observations and refuses Agent ingestion;
-enable live paths only in local or isolated staging until production browser
-authentication and secret-store integration exist.
+The Next.js Control Plane is a read-only fleet UI backed by PostgreSQL. It has
+no application login and binds to loopback. Expose it cross-host only through
+a trusted network or reverse proxy with verified HTTPS.
 
-## Prepare PostgreSQL
-
-Copy `apps/web/.env.example` to the ignored `apps/web/.env` and set
-`DATABASE_URL`. Keep GitLab tokens and Host Agent secrets out of environment
-files.
+## Environment and database
 
 ```bash
+cp apps/web/.env.example apps/web/.env
+$EDITOR apps/web/.env
 pnpm db:generate
 pnpm db:deploy
 pnpm db:status
 ```
 
-The schema stores platform identities, scoped credential digests, immutable
-Host and GitLab observations, and redacted audit events. Migrations are
-additive; credentials that cannot be associated with exactly one Stack fail
-closed and must be replaced.
+Required values are `DATABASE_URL` and the verified HTTPS
+`GITLAB_BASE_URL`. Keep GitLab tokens and Agent secrets out of `.env`.
 
-## Discover and import Runner records
+The database stores Runner Hosts, Stacks, Runner Record references, scoped
+credential digests, immutable observations, durable provisioning Operations,
+and redacted audit events.
 
-Use a dedicated GitLab token with only `read_api` and visibility to the target
-project Runners. Discovery makes two bounded REST searches for the supported
-tag sets, then reads only exact candidate IDs through GraphQL. It persists
-nothing and performs no GitLab mutation.
+## GitLab credentials
+
+Install a monitoring token with only `read_api`:
 
 ```bash
 read -rs GITLAB_READ_API_TOKEN
-printf '%s' "${GITLAB_READ_API_TOKEN}" | pnpm gitlab:discover
+printf '%s' "${GITLAB_READ_API_TOKEN}" | \
+  pnpm gitlab:credential:install -- --purpose monitoring
 unset GITLAB_READ_API_TOKEN
 ```
 
-Review the candidates manually. For a new same-host staging database,
-`pnpm gitlab:import-discovery` can import an unambiguous discovery file. The
-command requires the fixed ignored file to have mode `0600`, an empty
-inventory, and exactly one project Runner and project for each supported
-workload. It creates Host, Stack, and Runner record identities but no Agent
-credential.
+Project provisioning uses a different token with only `create_runner`:
 
-## Bootstrap a Host Agent
+```bash
+read -rs GITLAB_PROVISIONING_TOKEN
+printf '%s' "${GITLAB_PROVISIONING_TOKEN}" | \
+  pnpm gitlab:credential:install -- --purpose provisioning
+unset GITLAB_PROVISIONING_TOKEN
+```
 
-For same-host staging, bootstrap one Agent from an existing canonical Stack:
+Credentials are regular owner-only `0600` files below an owner-only `0700`
+directory. The installers reject symlinks, broad modes, unexpected owners, and
+oversized input. Tokens never enter `.env`, PostgreSQL, browser traffic, or
+logs.
+
+## Discover existing Runners
+
+```bash
+pnpm gitlab:discover
+```
+
+Discovery reads supported project Runners and persists nothing. For an empty
+staging database, review the fixed ignored discovery file and import it with:
+
+```bash
+pnpm gitlab:import-discovery
+```
+
+The import requires exact, unambiguous frontend and .NET matches.
+
+## Project provisioning
+
+Allow one exact Project path:
+
+```bash
+pnpm provisioning:project:allow -- --path namespace/project
+```
+
+Provision one isolated paused Runner:
+
+```bash
+pnpm runner:provision -- \
+  --project namespace/project \
+  --template gitlab-runners/dotnet
+```
+
+The high-level command composes the durable lower-level recovery commands:
+
+- `pnpm provisioning:operation:request`
+- `pnpm provisioning:host:stage`
+- `pnpm provisioning:worker:run`
+
+The generated Stack ID, user, service, container, and config path derive from
+the Operation UUID. The worker receives the one-time Runner token only through
+an in-memory handoff and stdin registration. It never automatically unpauses,
+unregisters, or deletes the GitLab Runner Record. After correlation, the
+high-level command also bootstraps the Stack-bound Host Agent.
+
+## Host Agent ingestion
+
+Enable ingestion explicitly:
+
+```dotenv
+PLATFORM_OBSERVATION_INGESTION=enabled
+```
+
+Bootstrap one Agent after its Stack exists in PostgreSQL:
 
 ```bash
 pnpm host:bootstrap-agent --stack gitlab-runners/frontend
 ```
 
-The command defaults to `http://127.0.0.1:3000`, generates a 256-bit secret in
-process memory, stores only its digest in PostgreSQL, streams the secret into
-the Runner user's owner-only file, and enables the systemd user timer. It
-revokes the new credential if installation fails and superseded credentials
-after success. This command mutates the Host and database and requires explicit
-authorization and normal interactive sudo.
+The Agent uses a Host-and-Stack-bound credential. `POST
+/api/v1/observations` authenticates before parsing a maximum 64 KiB strict v1
+payload. Deliveries are idempotent by UUID.
 
-For external secret-manager integration, issue a separately generated
-43–128-character base64url secret for one Host and Stack:
-
-```bash
-read -rs HOST_AGENT_SECRET
-printf '%s' "${HOST_AGENT_SECRET}" | pnpm host:issue-credential \
-  --host-id host-01 \
-  --stack-id frontend-main
-unset HOST_AGENT_SECRET
-```
-
-Never reuse a credential across Runner users. See the
-[Host Agent guide](../agent/README.md) for its fixed configuration, service,
-timer, and diagnostic commands.
-
-## Enable observations
-
-Set the staging-only switches in the Web environment:
+Every five seconds the Agent calls authenticated `GET
+/api/v1/observations/refresh`. The server requests fixed Host checks only when
+evidence is missing, stale, or older than the current Control Plane process.
+Startup forcing is enabled by default:
 
 ```dotenv
-PLATFORM_FLEET_REPOSITORY=postgresql
-PLATFORM_OBSERVATION_INGESTION=enabled
+PLATFORM_FORCE_HOST_REFRESH_ON_START=enabled
 ```
 
-The Agent sends one Stack per request to `POST /api/v1/observations` with a
-Host-and-Stack-bound Bearer credential. The route authenticates before parsing
-the body, limits JSON to 64 KiB, validates the versioned contract, and never
-accepts arbitrary commands or paths. A new delivery returns `202`; an identical
-retry returns `200`; reusing its UUID with different content returns `409`.
+Set it to `disabled` to opt out. The endpoint returns only a bounded decision;
+it cannot carry a command, path, or Operation.
 
-Plaintext is limited to a literal `127.0.0.1` or `::1` same-host staging
-origin. Cross-host connections require verified HTTPS.
+Host freshness defaults to 90 seconds. GitLab freshness defaults to 300:
 
-## Synchronize GitLab state
+```dotenv
+PLATFORM_HOST_FRESHNESS_SECONDS=90
+PLATFORM_GITLAB_FRESHNESS_SECONDS=300
+```
 
-Set `GITLAB_BASE_URL` to the verified HTTPS GitLab origin, then stream the
-dedicated `read_api` token:
+## GitLab synchronization
 
 ```bash
-read -rs GITLAB_READ_API_TOKEN
-printf '%s' "${GITLAB_READ_API_TOKEN}" | pnpm gitlab:sync
-unset GITLAB_READ_API_TOKEN
+pnpm gitlab:sync
 ```
 
-Synchronization queries only Runner IDs already correlated in PostgreSQL. It
-reads pause, connectivity, last-contact, and job-execution state and appends
-source-labelled observations. It never lists or mutates Runners. The command
-prints a redacted JSON summary and exits nonzero when any target fails.
+Synchronization queries only Runner Record IDs already correlated in
+PostgreSQL. It appends GitLab status, pause, contact, and job-execution
+observations without listing or mutating Runners.
 
-A target-specific failure preserves the last successful observation and does
-not block other targets. Authentication failure or rate limiting stops the run;
-a bounded `Retry-After` is reported without sleeping. Host and GitLab freshness
-are evaluated independently, and stale or missing sources appear as unknown.
+`pnpm dev` and `pnpm start` own the normal lifecycle:
 
-## Disable and recover
+1. load the installed monitoring credential;
+2. complete one GitLab sync attempt;
+3. start Next.js on `127.0.0.1`;
+4. continue serial sync at `GITLAB_SYNC_INTERVAL_SECONDS` (default 60);
+5. stop Next.js, watcher, and database clients cleanly on one Ctrl-C.
 
-Stop synchronization, revoke the dedicated GitLab token, and restore safe Web
-defaults:
+Do not run `pnpm gitlab:watch` beside the supervised server.
+
+## Start and stop
+
+Development:
+
+```bash
+pnpm dev
+```
+
+Production:
+
+```bash
+pnpm web:build
+pnpm start
+```
+
+The browser requests a fresh server render every 10 seconds while visible and
+immediately when a background tab becomes visible. Missing or stale evidence
+is shown as unknown; no fake data path exists.
+
+To disable ingestion, stop the server and set:
 
 ```dotenv
 PLATFORM_OBSERVATION_INGESTION=disabled
-PLATFORM_FLEET_REPOSITORY=fake
 ```
 
-The Runner manager and jobs do not depend on the Control Plane. Keep existing
-observations and audit events for diagnosis; do not delete them merely to roll
-back application code. Revoke affected credentials explicitly during an
-incident.
-
-Current limitations:
-
-- Agent rollout uses an explicit staging installer rather than Ansible.
-- GitLab synchronization has no installed scheduler or production secret-store
-  integration.
-- Credential rotation and revocation have no administrative UI.
-- Live PostgreSQL and GitLab tests require explicitly provisioned disposable
-  staging dependencies.
-- The connector cannot pause, resume, register, or delete a Runner.
+Runner managers and jobs do not depend on Control Plane availability.

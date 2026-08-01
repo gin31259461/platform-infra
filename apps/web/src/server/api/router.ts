@@ -6,14 +6,13 @@ import { createTRPCRouter, publicProcedure, viewerProcedure } from "./trpc";
 
 export const appRouter = createTRPCRouter({
   health: publicProcedure.query(() => ({ status: "ok" as const })),
-  actor: viewerProcedure.query(({ ctx }) => ctx.actor),
   fleet: createTRPCRouter({
     list: viewerProcedure.query(async ({ ctx }) => {
       const snapshot = await ctx.fleetRepository.getSnapshot(ctx.now);
       return {
         generatedAt: snapshot.generatedAt,
-        stacks: snapshot.stacks.map((stack) => evaluateRunnerStack(stack, ctx.now)),
-        summary: summarizeFleet(snapshot, ctx.now),
+        stacks: snapshot.stacks.map((stack) => evaluateRunnerStack(stack, ctx.now, ctx.freshnessPolicy)),
+        summary: summarizeFleet(snapshot, ctx.now, ctx.freshnessPolicy),
       };
     }),
     byId: viewerProcedure.input(z.object({ id: z.string().min(1).max(120) })).query(async ({ ctx, input }) => {
@@ -22,7 +21,7 @@ export const appRouter = createTRPCRouter({
       if (!stack) {
         throw new TRPCError({ code: "NOT_FOUND" });
       }
-      return evaluateRunnerStack(stack, ctx.now);
+      return evaluateRunnerStack(stack, ctx.now, ctx.freshnessPolicy);
     }),
   }),
 });

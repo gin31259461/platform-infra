@@ -9,6 +9,7 @@
   "scripts": {
     "dev": "pnpm --filter @gitlab-runner-platform/web dev",
     "web:build": "pnpm --filter @gitlab-runner-platform/web build",
+    "start": "pnpm --filter @gitlab-runner-platform/web start",
     "web:lint": "pnpm --filter @gitlab-runner-platform/web lint",
     "web:typecheck": "pnpm --filter @gitlab-runner-platform/web typecheck",
     "workspace:test": "pnpm --filter './apps/**' --filter './packages/**' --recursive --if-present test",
@@ -23,8 +24,15 @@
     "host:bootstrap-agent": "pnpm --filter @gitlab-runner-platform/web host:bootstrap-agent",
     "host:issue-credential": "pnpm --filter @gitlab-runner-platform/web host:issue-credential",
     "gitlab:discover": "pnpm --filter @gitlab-runner-platform/web gitlab:discover",
+    "gitlab:credential:install": "pnpm --filter @gitlab-runner-platform/web gitlab:credential:install",
     "gitlab:import-discovery": "pnpm --filter @gitlab-runner-platform/web gitlab:import-discovery",
     "gitlab:sync": "pnpm --filter @gitlab-runner-platform/web gitlab:sync",
+    "gitlab:watch": "pnpm --filter @gitlab-runner-platform/web gitlab:watch",
+    "provisioning:project:allow": "pnpm --filter @gitlab-runner-platform/web provisioning:project:allow",
+    "provisioning:operation:request": "pnpm --filter @gitlab-runner-platform/web provisioning:operation:request",
+    "provisioning:host:stage": "pnpm --filter @gitlab-runner-platform/web provisioning:host:stage",
+    "provisioning:worker:run": "pnpm --filter @gitlab-runner-platform/web provisioning:worker:run",
+    "runner:provision": "./scripts/provision-project-runner.sh",
     "validate:web": "pnpm db:generate && pnpm workspace:typecheck && pnpm workspace:test && pnpm web:lint && pnpm web:build"
   }
 }

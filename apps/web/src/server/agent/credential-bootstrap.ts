@@ -138,11 +138,14 @@ async function revokeCredentials(
 
 export async function bootstrapAgent(
   prisma: PrismaClient,
-  input: { canonicalStackName: string; controlPlaneUrl: string },
+  input: { canonicalStackName: string; controlPlaneUrl: string; runnerStackId?: string },
   install: (input: AgentInstallerInput) => Promise<void>,
   dependencies: BootstrapDependencies = defaultDependencies,
 ): Promise<AgentBootstrapResult> {
   if (!stackNamePattern.test(input.canonicalStackName)) {
+    throw new AgentBootstrapTargetError();
+  }
+  if (input.runnerStackId !== undefined && !/^[A-Za-z0-9][A-Za-z0-9_.-]{0,119}$/.test(input.runnerStackId)) {
     throw new AgentBootstrapTargetError();
   }
   const controlPlane = parseControlPlaneOrigin(input.controlPlaneUrl);
@@ -152,6 +155,7 @@ export async function bootstrapAgent(
     where: {
       canonicalName: input.canonicalStackName,
       host: { revokedAt: null },
+      id: input.runnerStackId,
     },
   });
   if (targets.length !== 1) throw new AgentBootstrapTargetError();

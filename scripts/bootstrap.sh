@@ -16,7 +16,8 @@ fi
 pacman -Syu --needed --noconfirm \
   ansible-core \
   git \
-  python
+  python \
+  python-yaml
 
 ansible-galaxy collection install \
   --collections-path /usr/share/ansible/collections \

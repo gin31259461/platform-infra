@@ -6,7 +6,7 @@
   "hostId": "host-01",
   "requestTimeoutSeconds": 10,
   "stack": {
-    "gitlabHealthPath": "/-/health",
+    "gitlabHealthPath": "/users/sign_in",
     "gitlabHostname": "gitlab.example.invalid",
     "id": "frontend-main",
     "runnerService": "gitlab-runner-frontend.service",

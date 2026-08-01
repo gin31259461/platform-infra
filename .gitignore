@@ -12,6 +12,7 @@ secrets/
 !apps/web/.env.example
 *.retry
 .cache/
+.venv/
 
 node_modules/
 .next/

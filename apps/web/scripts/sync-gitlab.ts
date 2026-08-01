@@ -1,36 +1,22 @@
-import { randomUUID } from "node:crypto";
-
-import { getPrismaClient } from "../src/server/database/client";
-import { GraphQlGitLabRunnerConnector } from "../src/server/gitlab/client";
-import { PrismaGitLabObservationStore } from "../src/server/gitlab/prisma-store";
-import { syncGitLabRunnerObservations } from "../src/server/gitlab/sync";
-import { readSecretFromStandardInput } from "./lib/secret-input";
+import { GitLabCredentialUnavailableError } from "../src/server/gitlab/credential-store";
+import { createGitLabObservationRuntime } from "../src/server/gitlab/runtime";
 
 async function main(): Promise<void> {
-  const baseUrl = process.env.GITLAB_BASE_URL;
-  if (!baseUrl) {
-    throw new Error("GITLAB_BASE_URL is required");
-  }
-
-  const token = await readSecretFromStandardInput("GitLab token");
-  const prisma = getPrismaClient();
+  const runtime = await createGitLabObservationRuntime();
   try {
-    const result = await syncGitLabRunnerObservations({
-      connector: new GraphQlGitLabRunnerConnector({ baseUrl, token }),
-      deliveryId: randomUUID(),
-      now: new Date(),
-      store: new PrismaGitLabObservationStore(prisma),
-    });
+    const result = await runtime.sync();
     process.stdout.write(`${JSON.stringify(result)}\n`);
     if (result.failed > 0) {
       process.exitCode = 1;
     }
   } finally {
-    await prisma.$disconnect();
+    await runtime.disconnect();
   }
 }
 
-main().catch(() => {
-  process.stderr.write("GitLab Runner synchronization failed\n");
+main().catch((error: unknown) => {
+  process.stderr.write(error instanceof GitLabCredentialUnavailableError
+    ? "Monitoring GitLab credential unavailable; run gitlab:credential:install\n"
+    : "GitLab Runner synchronization failed\n");
   process.exitCode = 1;
 });

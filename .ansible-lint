@@ -1,4 +1,8 @@
 ---
-# SPEC.md requires roles/<family>/<role>, so role paths are intentional.
+profile: basic
+
+# Roles are intentionally grouped under common/ and gitlab_runner/. Shared
+# variables use common_* and gitlab_runner_* names across those role boundaries.
 skip_list:
   - role-name[path]
+  - var-naming[no-role-prefix]

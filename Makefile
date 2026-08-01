@@ -11,31 +11,31 @@ bootstrap:
 	sudo ./scripts/bootstrap.sh
 
 check:
-	./scripts/check.sh "$(STACK)"
+	./scripts/check.sh "$(STACK)" "$(STACK_INSTANCE_ID)"
 
 install:
-	./scripts/install.sh "$(STACK)"
+	./scripts/install.sh "$(STACK)" "$(STACK_INSTANCE_ID)"
 
 install-agent:
 	./scripts/install-agent.sh
 
 register:
-	./scripts/register-runner.sh "$(STACK)"
+	./scripts/register-runner.sh "$(STACK)" "$(STACK_INSTANCE_ID)"
 
 verify:
-	./scripts/verify.sh "$(STACK)"
+	./scripts/verify.sh "$(STACK)" "$(STACK_INSTANCE_ID)"
 
 status:
-	./scripts/status.sh "$(STACK)"
+	./scripts/status.sh "$(STACK)" "$(STACK_INSTANCE_ID)"
 
 uninstall:
-	./scripts/uninstall.sh "$(STACK)"
+	./scripts/uninstall.sh "$(STACK)" "$(STACK_INSTANCE_ID)"
 
 idempotency:
-	./tests/verify-idempotency.sh "$(STACK)"
+	./tests/verify-idempotency.sh "$(STACK)" "$(STACK_INSTANCE_ID)"
 
 validate:
-	./tests/validate-stack.sh "$(STACK)"
+	./tests/validate-stack.sh "$(STACK)" "$(STACK_INSTANCE_ID)"
 
 validate-all:
 	./tests/validate-all.sh
@@ -44,4 +44,4 @@ lint:
 	./tests/lint.sh
 
 test-agent:
-	python -m unittest discover -s agent/tests -v
+	uv run --locked python -m unittest discover -s agent/tests -v

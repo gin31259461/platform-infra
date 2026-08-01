@@ -1,4 +1,7 @@
-import type { HostAgentObservation } from "@gitlab-runner-platform/contracts";
+import type {
+  HostAgentObservation,
+  HostAgentStackObservation,
+} from "@gitlab-runner-platform/contracts";
 import { createHash } from "node:crypto";
 
 import {
@@ -11,6 +14,8 @@ import type {
   HostAgentObservationStore,
   ObservationIngestionResult,
 } from "./ingestion";
+
+type RegisteredStack = { canonicalName: string; id: string; workload: string };
 
 export class UnregisteredRunnerStackError extends Error {
   constructor() {
@@ -49,11 +54,11 @@ export class PrismaHostAgentObservationStore implements HostAgentObservationStor
         select: { canonicalName: true, id: true, workload: true },
         where: {
           hostId: principal.hostId,
-          id: { in: observation.stacks.map((stack) => stack.id) },
+          id: { in: observation.stacks.map((stack: HostAgentStackObservation) => stack.id) },
         },
       });
-      const registeredById = new Map(registeredStacks.map((stack) => [stack.id, stack]));
-      const allStacksMatch = observation.stacks.every((stack) => {
+      const registeredById = new Map(registeredStacks.map((stack: RegisteredStack) => [stack.id, stack]));
+      const allStacksMatch = observation.stacks.every((stack: HostAgentStackObservation) => {
         const registered = registeredById.get(stack.id);
         return registered
           && registered.canonicalName === stack.stackName
@@ -64,7 +69,7 @@ export class PrismaHostAgentObservationStore implements HostAgentObservationStor
       }
 
       const inserted = await transaction.observation.createMany({
-        data: observation.stacks.map((stack) => ({
+        data: observation.stacks.map((stack: HostAgentStackObservation) => ({
           deliveryId: observation.deliveryId,
           deliveryDigest,
           observedAt: new Date(observation.observedAt),
@@ -85,7 +90,9 @@ export class PrismaHostAgentObservationStore implements HostAgentObservationStor
           select: { deliveryDigest: true },
           where: {
             deliveryId: observation.deliveryId,
-            runnerStackId: { in: observation.stacks.map((stack) => stack.id) },
+            runnerStackId: {
+              in: observation.stacks.map((stack: HostAgentStackObservation) => stack.id),
+            },
             source: ObservationSource.HOST_AGENT,
           },
         });

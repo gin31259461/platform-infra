@@ -1,16 +1,18 @@
-import { spawn } from "node:child_process";
-import { fileURLToPath } from "node:url";
-
 import {
   AgentBootstrapFinalizationError,
   bootstrapAgent,
-  type AgentInstallerInput,
 } from "../src/server/agent/credential-bootstrap";
+import { installHostAgent } from "../src/server/agent/installer";
 import { getPrismaClient } from "../src/server/database/client";
 
-const allowedOptions = new Set(["control-plane-url", "stack"]);
+const allowedOptions = new Set(["control-plane-url", "stack", "stack-id"]);
 
-function parseOptions(values: string[]): { canonicalStackName: string; controlPlaneUrl: string } {
+function parseOptions(values: string[]): {
+  canonicalStackName: string;
+  controlPlaneUrl: string;
+  runnerStackId?: string;
+} {
+  values = values[0] === "--" ? values.slice(1) : values;
   const options = new Map<string, string>();
   for (let index = 0; index < values.length; index += 2) {
     const flag = values[index];
@@ -28,46 +30,15 @@ function parseOptions(values: string[]): { canonicalStackName: string; controlPl
   return {
     canonicalStackName: options.get("stack")!,
     controlPlaneUrl: options.get("control-plane-url") ?? "http://127.0.0.1:3000",
+    runnerStackId: options.get("stack-id"),
   };
-}
-
-const projectRoot = fileURLToPath(new URL("../../../", import.meta.url));
-const installerPath = fileURLToPath(new URL("../../../scripts/install-agent.sh", import.meta.url));
-
-function runInstaller(input: AgentInstallerInput): Promise<void> {
-  return new Promise((resolve, reject) => {
-    const secret = Buffer.from(input.secret, "utf8");
-    const childEnvironment: NodeJS.ProcessEnv = {
-      ALLOW_PLAINTEXT_LOOPBACK: String(input.allowPlaintextLoopback),
-      CONTROL_PLANE_URL: input.controlPlaneUrl,
-      CREDENTIAL_ID: input.credentialId,
-      HOST_ID: input.hostId,
-      NODE_ENV: process.env.NODE_ENV,
-      PATH: process.env.PATH ?? "/usr/bin:/bin",
-      RUNNER_STACK_ID: input.runnerStackId,
-      STACK: input.canonicalStackName,
-    };
-    const child = spawn(installerPath, [], {
-      cwd: projectRoot,
-      env: childEnvironment,
-      stdio: ["pipe", "inherit", "inherit"] as const,
-    });
-    child.stdin.on("error", () => undefined);
-    child.stdin.end(secret, () => secret.fill(0));
-    child.once("error", reject);
-    child.once("close", (code) => {
-      secret.fill(0);
-      if (code === 0) resolve();
-      else reject(new Error("Host Agent installer exited unsuccessfully"));
-    });
-  });
 }
 
 async function main(): Promise<void> {
   const input = parseOptions(process.argv.slice(2));
   const prisma = getPrismaClient();
   try {
-    const result = await bootstrapAgent(prisma, input, runInstaller);
+    const result = await bootstrapAgent(prisma, input, installHostAgent);
     process.stdout.write(`${JSON.stringify(result)}\n`);
   } finally {
     await prisma.$disconnect();

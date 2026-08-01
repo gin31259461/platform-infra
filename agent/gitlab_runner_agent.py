@@ -26,6 +26,7 @@ import uuid
 AGENT_VERSION = "0.1.0"
 CONTRACT_VERSION = "1.0"
 MAX_OBSERVATION_BYTES = 64 * 1024
+MAX_REFRESH_RESPONSE_BYTES = 1024
 SECRET_PATTERN = re.compile(
     r"(glrt-|glpat-|gldt-|authorization\s*:\s*bearer|-----begin [^-]*private key-----)",
     re.IGNORECASE,
@@ -116,6 +117,30 @@ def _validate_control_plane_url(value: object, allow_plaintext_loopback: bool) -
     ):
         raise AgentError("Control Plane URL must be an HTTPS origin or explicitly allowed loopback HTTP origin")
     return value.rstrip("/")
+
+
+def parse_gitlab_health_url(value: object) -> tuple[str, str]:
+    if not isinstance(value, str):
+        raise AgentError("Invalid GitLab health URL")
+    try:
+        parsed = urllib.parse.urlsplit(value)
+        port = parsed.port
+    except ValueError as error:
+        raise AgentError("Invalid GitLab health URL") from error
+    if (
+        parsed.scheme != "https"
+        or not parsed.hostname
+        or port not in (None, 443)
+        or parsed.username is not None
+        or parsed.password is not None
+        or parsed.query
+        or parsed.fragment
+    ):
+        raise AgentError("GitLab health URL must use an HTTPS origin and path")
+    health_path = _require_string(parsed.path, r"/[A-Za-z0-9_./-]*", "GitLab health path", 200)
+    if ".." in health_path.split("/"):
+        raise AgentError("Invalid GitLab health path")
+    return parsed.hostname, health_path
 
 
 def parse_config(value: object) -> AgentConfig:
@@ -434,20 +459,69 @@ def send_observation(config: AgentConfig, secret: str, observation: dict[str, ob
     raise AgentError("Observation delivery failed")
 
 
+def request_observation_refresh(config: AgentConfig, secret: str) -> tuple[bool, str]:
+    request = urllib.request.Request(
+        f"{config.control_plane_url}/api/v1/observations/refresh",
+        headers={
+            "Accept": "application/json",
+            "Authorization": f"Bearer {config.credential_id}.{secret}",
+            "User-Agent": f"gitlab-runner-platform-agent/{AGENT_VERSION}",
+        },
+        method="GET",
+    )
+    opener = urllib.request.build_opener(urllib.request.HTTPSHandler(context=ssl.create_default_context()), _NoRedirect())
+    try:
+        with opener.open(request, timeout=config.request_timeout_seconds) as response:
+            content_type = response.headers.get("Content-Type", "").split(";", 1)[0]
+            if response.status != 200 or content_type != "application/json":
+                raise AgentError("Observation refresh response is invalid")
+            encoded = response.read(MAX_REFRESH_RESPONSE_BYTES + 1)
+    except AgentError:
+        raise
+    except (urllib.error.URLError, TimeoutError, OSError):
+        raise AgentError("Observation refresh request failed") from None
+
+    if len(encoded) > MAX_REFRESH_RESPONSE_BYTES:
+        raise AgentError("Observation refresh response is invalid")
+    try:
+        value = json.loads(encoded.decode("utf-8"))
+    except (UnicodeError, json.JSONDecodeError):
+        raise AgentError("Observation refresh response is invalid") from None
+    fields = _require_exact_keys(value, {"contractVersion", "reason", "refresh"}, "observation refresh response")
+    reason = fields["reason"]
+    refresh = fields["refresh"]
+    if (
+        fields["contractVersion"] != CONTRACT_VERSION
+        or type(refresh) is not bool
+        or reason not in ("current", "missing", "stale", "startup")
+        or (refresh is False) != (reason == "current")
+    ):
+        raise AgentError("Observation refresh response is invalid")
+    return refresh, reason
+
+
 def run_once(
     paths: AgentPaths,
     *,
     now: Callable[[], dt.datetime] = lambda: dt.datetime.now(dt.timezone.utc),
+    refresher: Callable[[AgentConfig, str], tuple[bool, str]] = request_observation_refresh,
     sender: Callable[[AgentConfig, str, dict[str, object]], str] = send_observation,
     collector: Callable[[AgentConfig, AgentPaths, dt.datetime], dict[str, object]] = collect_observation,
 ) -> str:
     config = load_config(paths.config_file)
     secret = load_credential(paths.credential_file)
     pending = load_pending(paths.pending_file)
-    if pending is None:
-        pending = collector(config, paths, now())
-        write_pending(paths.pending_file, pending)
-    result = sender(config, secret, pending)
+    if pending is not None:
+        sender(config, secret, pending)
+        paths.pending_file.unlink()
+
+    refresh, reason = refresher(config, secret)
+    if not refresh:
+        return reason
+
+    fresh = collector(config, paths, now())
+    write_pending(paths.pending_file, fresh)
+    result = sender(config, secret, fresh)
     paths.pending_file.unlink()
     return result
 
@@ -458,7 +532,7 @@ def main() -> int:
     except AgentError as error:
         sys.stderr.write(f"Host Agent failed: {error}\n")
         return 1
-    sys.stdout.write(f"Observation {status}\n")
+    sys.stdout.write(f"Host Agent {status}\n")
     return 0
 
 

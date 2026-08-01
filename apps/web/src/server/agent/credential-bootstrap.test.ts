@@ -127,6 +127,27 @@ describe("one-command Host Agent bootstrap", () => {
     expect(install).not.toHaveBeenCalled();
   });
 
+  it("selects one explicit Stack ID when a Template has several deployed instances", async () => {
+    const { prisma } = prismaForBootstrap([{ hostId: "host-01", id: "dotnet-b08629f8dfa8" }]);
+    const deps = {
+      ...dependencies(),
+      issueCredential: vi.fn(async () => ({ ...issuance, runnerStackId: "dotnet-b08629f8dfa8" })),
+    };
+    await expect(bootstrapAgent(prisma, {
+      canonicalStackName: "gitlab-runners/dotnet",
+      controlPlaneUrl: "http://127.0.0.1:3000",
+      runnerStackId: "dotnet-b08629f8dfa8",
+    }, vi.fn(async () => undefined), deps)).resolves.toMatchObject({
+      runnerStackId: "dotnet-b08629f8dfa8",
+    });
+    expect(prisma.runnerStack.findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({
+        canonicalName: "gitlab-runners/dotnet",
+        id: "dotnet-b08629f8dfa8",
+      }),
+    }));
+  });
+
   it("rejects non-loopback plaintext before resolving inventory", async () => {
     const { prisma } = prismaForBootstrap();
     await expect(bootstrapAgent(prisma, {
