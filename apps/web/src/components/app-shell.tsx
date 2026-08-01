@@ -2,6 +2,7 @@ import { Box, Container, Stack, Typography } from "@mui/material";
 import Link from "next/link";
 import type { ReactNode } from "react";
 
+import { ColorModeToggle } from "@/components/color-mode-toggle";
 import { ObservationRefresh } from "@/components/observation-refresh";
 
 const navigation = [
@@ -28,6 +29,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             ))}
           </Stack>
           <Typography color="text.secondary" fontSize={12} ml="auto">Read-only</Typography>
+          <Box ml={1}><ColorModeToggle /></Box>
         </Container>
       </Box>
       {children}

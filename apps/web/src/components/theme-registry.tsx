@@ -1,16 +1,36 @@
 "use client";
 
 import { AppRouterCacheProvider } from "@mui/material-nextjs/v16-appRouter";
-import { createTheme, CssBaseline, ThemeProvider } from "@mui/material";
+import { CssBaseline, ThemeProvider } from "@mui/material";
+import { createTheme } from "@mui/material/styles";
 import type { ReactNode } from "react";
 
-const theme = createTheme({
-  palette: {
-    background: { default: "#f6f8fa", paper: "#ffffff" },
-    divider: "#d0d7de",
-    primary: { main: "#0969da" },
-    secondary: { main: "#8250df" },
+export const colorSchemes = {
+  light: {
+    palette: {
+      mode: "light" as const,
+      background: { default: "#f6f8fa", paper: "#ffffff" },
+      divider: "#d0d7de",
+      primary: { main: "#0969da" },
+    },
   },
+  dark: {
+    palette: {
+      mode: "dark" as const,
+      background: { default: "#0d1117", paper: "#161b22" },
+      divider: "#30363d",
+      error: { main: "#f85149" },
+      info: { main: "#58a6ff" },
+      primary: { main: "#58a6ff" },
+      success: { main: "#3fb950" },
+      warning: { main: "#d29922" },
+    },
+  },
+};
+
+export const theme = createTheme({
+  cssVariables: { colorSchemeSelector: "data-mui-color-scheme" },
+  colorSchemes,
   shape: { borderRadius: 6 },
   typography: {
     fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
@@ -27,7 +47,7 @@ const theme = createTheme({
 export function ThemeRegistry({ children }: { children: ReactNode }) {
   return (
     <AppRouterCacheProvider options={{ enableCssLayer: true }}>
-      <ThemeProvider theme={theme}>
+      <ThemeProvider defaultMode="system" disableTransitionOnChange theme={theme}>
         <CssBaseline />
         {children}
       </ThemeProvider>

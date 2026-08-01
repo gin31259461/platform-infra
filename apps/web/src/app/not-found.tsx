@@ -4,11 +4,11 @@ import Link from "next/link";
 export default function NotFoundPage() {
   return (
     <Container component="main" maxWidth="sm" sx={{ py: 8 }}>
-      <Paper sx={{ border: "1px solid #d8dee8", borderRadius: 1, p: 4, textAlign: "center" }} variant="outlined">
+      <Paper sx={{ border: "1px solid", borderColor: "divider", borderRadius: 1, p: 4, textAlign: "center" }} variant="outlined">
         <Typography color="text.secondary" fontSize={12}>404</Typography>
-        <Typography component="h1" variant="h4" fontWeight={700} mt={1}>Runner Stack not found</Typography>
-        <Typography color="text.secondary" mt={1}>The explicit platform identity did not match the current Fleet snapshot.</Typography>
-        <Link href="/runners"><Button sx={{ mt: 3 }} variant="contained">Return to inventory</Button></Link>
+        <Typography component="h1" variant="h4" fontWeight={700} mt={1}>Runner not found</Typography>
+        <Typography color="text.secondary" mt={1}>This runner is not in the current data.</Typography>
+        <Link href="/runners"><Button sx={{ mt: 3 }} variant="contained">Back to runners</Button></Link>
       </Paper>
     </Container>
   );

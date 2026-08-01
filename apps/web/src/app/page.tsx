@@ -10,7 +10,7 @@ export default async function OverviewPage() {
   const fleet = await api.fleet.list();
   const summary = [
     ["Healthy", fleet.summary.healthy, "success.main"],
-    ["Degraded", fleet.summary.degraded, "warning.dark"],
+    ["Warning", fleet.summary.degraded, "warning.main"],
     ["Unhealthy", fleet.summary.unhealthy, "error.main"],
     ["Unknown", fleet.summary.unknown, "text.secondary"],
   ] as const;
@@ -21,7 +21,7 @@ export default async function OverviewPage() {
         <Box>
           <Typography component="h1" fontSize={24} fontWeight={600}>Overview</Typography>
           <Typography color="text.secondary" fontSize={13} mt={.5}>
-            {fleet.summary.total} Runner Stack{fleet.summary.total === 1 ? "" : "s"}
+            {fleet.summary.total} runner{fleet.summary.total === 1 ? "" : "s"}
           </Typography>
         </Box>
         <Link href="/runners">
@@ -41,8 +41,8 @@ export default async function OverviewPage() {
       </Box>
 
       <Paper sx={{ border: "1px solid", borderColor: "divider", mt: 3, overflow: "hidden" }} variant="outlined">
-        <Box sx={{ bgcolor: "#f6f8fa", borderBottom: "1px solid", borderColor: "divider", px: 2, py: 1.25 }}>
-          <Typography fontSize={13} fontWeight={600}>Runner Stacks</Typography>
+        <Box sx={{ bgcolor: "action.hover", borderBottom: "1px solid", borderColor: "divider", px: 2, py: 1.25 }}>
+          <Typography fontSize={13} fontWeight={600}>Runners</Typography>
         </Box>
         {fleet.stacks.length === 0
           ? <EmptyFleetState />

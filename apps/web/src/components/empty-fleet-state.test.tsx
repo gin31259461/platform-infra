@@ -7,7 +7,6 @@ describe("empty fleet state", () => {
   it("explains that the real PostgreSQL inventory has no Runner data", () => {
     const markup = renderToStaticMarkup(<EmptyFleetState />);
 
-    expect(markup).toContain("No runner data");
-    expect(markup).toContain("No Runner Stacks are enrolled in PostgreSQL");
+    expect(markup).toContain("No runners found");
   });
 });

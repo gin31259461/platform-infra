@@ -1,9 +1,10 @@
-import { Chip, Container, Paper, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Typography } from "@mui/material";
+import { Container, Paper, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Typography } from "@mui/material";
 import Link from "next/link";
 
 import { EmptyFleetState } from "@/components/empty-fleet-state";
+import { GitLabStateChip } from "@/components/gitlab-state-chip";
 import { HealthChip } from "@/components/health-chip";
-import { formatAge, formatGitLabRecordState } from "@/lib/format";
+import { formatAge } from "@/lib/format";
 import { api } from "@/server/api/caller";
 
 export default async function RunnerInventoryPage() {
@@ -13,19 +14,19 @@ export default async function RunnerInventoryPage() {
     <Container component="main" maxWidth="lg" sx={{ py: 4 }}>
       <Typography component="h1" fontSize={24} fontWeight={600}>Runners</Typography>
       <Typography color="text.secondary" fontSize={13} mt={.5}>
-        GitLab and Host observations are evaluated independently.
+        GitLab and host status update separately.
       </Typography>
 
       <Paper sx={{ border: "1px solid", borderColor: "divider", mt: 3, overflow: "hidden" }} variant="outlined">
         <TableContainer>
           <Table aria-label="Runner Stack inventory" size="small" sx={{ minWidth: 900 }}>
-            <TableHead sx={{ bgcolor: "#f6f8fa" }}>
+            <TableHead sx={{ bgcolor: "action.hover" }}>
               <TableRow>
                 <TableCell>Runner</TableCell>
                 <TableCell>Health</TableCell>
                 <TableCell>GitLab</TableCell>
-                <TableCell>Host observation</TableCell>
-                <TableCell>Drift</TableCell>
+                <TableCell>Host update</TableCell>
+                <TableCell>Changes</TableCell>
                 <TableCell>Jobs</TableCell>
               </TableRow>
             </TableHead>
@@ -48,29 +49,27 @@ export default async function RunnerInventoryPage() {
                     </TableCell>
                     <TableCell><HealthChip state={stack.state} /></TableCell>
                     <TableCell>
-                      <Chip
-                        color={stack.gitlabFreshness === "stale" ? "warning" : "default"}
-                        label={formatGitLabRecordState(stack.gitlabState, stack.gitlabFreshness, stack.gitlabObservedAt)}
-                        size="small"
-                        sx={{ borderRadius: 1 }}
-                        variant="outlined"
+                      <GitLabStateChip
+                        freshness={stack.gitlabFreshness}
+                        observedAt={stack.gitlabObservedAt}
+                        state={stack.gitlabState}
                       />
                       <Typography color="text.secondary" fontSize={11} mt={.5}>
                         {formatAge(stack.gitlabObservedAt, fleet.generatedAt)}
                       </Typography>
                     </TableCell>
                     <TableCell>
-                      <Typography color={stack.freshness === "stale" ? "warning.dark" : "text.primary"} fontSize={12}>
+                      <Typography color={stack.freshness === "stale" ? "warning.main" : "text.primary"} fontSize={12}>
                         {formatAge(stack.observedAt, fleet.generatedAt)}
                       </Typography>
                       <Typography color="text.secondary" fontSize={11}>{stack.hostDisplayName}</Typography>
                     </TableCell>
                     <TableCell>
-                      <Typography color={stack.drift === null ? "text.secondary" : stack.drift.length ? "warning.dark" : "success.dark"} fontSize={12} fontWeight={600}>
-                        {stack.drift === null ? "Not evaluated" : stack.drift.length || "None"}
+                      <Typography color={stack.drift === null ? "text.secondary" : stack.drift.length ? "warning.main" : "success.main"} fontSize={12} fontWeight={600}>
+                        {stack.drift === null ? "No data" : stack.drift.length || "None"}
                       </Typography>
                     </TableCell>
-                    <TableCell><Typography fontSize={12}>{stack.jobsRunning ?? "Not reported"}</Typography></TableCell>
+                    <TableCell><Typography fontSize={12}>{stack.jobsRunning ?? "No data"}</Typography></TableCell>
                   </TableRow>
                 ))}
             </TableBody>
