@@ -15,8 +15,9 @@ Host automation installs the Runner Manager, while the scoped bootstrap flow
 installs its Host Agent. A separate CLI composes both paths to create an
 initially paused, project-scoped Runner Record and observable Runner Stack in
 one operation. Browser monitoring requires no application login;
-GitLab credentials are installed once on B and never sent to the browser.
-Remote write Operations and browser provisioning remain unimplemented.
+GitLab credentials are installed once in the Control Plane credential store
+and never sent to the browser. Remote write Operations and browser
+provisioning remain unimplemented.
 
 ## 1. Purpose
 
@@ -33,7 +34,7 @@ store. It does not yet include automated Agent deployment through Ansible,
 installed connector services, external secret-manager integration, or remote
 Operations.
 
-The canonical domain language is defined in [CONTEXT.md](CONTEXT.md).
+The canonical domain language is defined in [Domain context](context.md).
 
 ## 2. Problem
 
@@ -117,19 +118,22 @@ interface is not authorization, and a GitLab token never authenticates a user.
 
 ## 6. System boundary
 
-The first deployment topology has three roles:
+The first deployment topology has four component roles:
 
-- **A — GitLab Service**: authority for Projects, jobs, and Runner Records.
-- **B — Arch Runner Service**: hosts the Control Plane, PostgreSQL, Host
-  Provisioner, Host Agent, and one or more isolated Runner Stacks.
-- **C — Operator device**: runs only the browser and communicates with B.
+- **GitLab instance**: authority for Projects, jobs, and Runner Records.
+- **Control Plane**: hosts the Web UI, API, PostgreSQL integration, GitLab
+  adapters, and Operation queue.
+- **Runner Host**: hosts the Host Provisioner, Host Agent, and one or more
+  isolated Runner Stacks.
+- **Operator device**: runs only the browser and communicates with the Control
+  Plane.
 
 ```text
-C: Operator browser
+Operator browser
       |
       | trusted network + verified HTTPS
       v
-B: Web UI + Control Plane API -------> A: GitLab API
+Web UI + Control Plane API -------> GitLab API
       |
       | typed request
       v
@@ -139,7 +143,7 @@ B: Web UI + Control Plane API -------> A: GitLab API
       v                              |
    provisioning Module          read-only Host Agent
       |              |
-      |              `-------------> A: GitLab API
+      |              `-------------> GitLab API
       |                 create Project Runner Record
       | one-use local secret handoff
       v
@@ -147,7 +151,7 @@ B: Web UI + Control Plane API -------> A: GitLab API
       |
       | fixed local automation
       v
-   Runner Stack --> Runner Manager --> A: GitLab over external VPN
+   Runner Stack --> Runner Manager --> GitLab over external VPN
                          |
                          `-- isolated per-build Job Containers
 ```
@@ -346,7 +350,7 @@ AuditEvents and OperationEvents must retain referential integrity.
 
 ## 9. Security requirements
 
-- Preserve every invariant in [docs/security.md](docs/security.md), including
+- Preserve every invariant in [Security](security.md), including
   rootless Podman, dedicated Runner users, unprivileged jobs, per-build
   networks, narrow image allowlists, and no runtime socket in jobs.
 - The browser-facing Control Plane interface and Host Agent must never receive
@@ -420,8 +424,8 @@ The first write-capable release is complete when:
    an approved Runner Template without providing a GitLab token in the browser.
 2. A duplicated request or queue delivery never starts a second provisioning
    attempt. A determinate success produces exactly one Project Runner Record
-   and one isolated Runner Stack on B; ambiguous GitLab creation remains
-   `unknown outcome` and is not automatically retried.
+   and one isolated Runner Stack on the selected Runner Host; ambiguous GitLab
+   creation remains `unknown outcome` and is not automatically retried.
 3. The Runner authentication token reaches registration without appearing in
    browser traffic, database rows, queue payloads, logs, audit events, process
    arguments, temporary files, or shell history.
@@ -496,7 +500,8 @@ and the Host Agent has a systemd user service with a scoped bootstrap flow.
 The following decisions remain open:
 
 - Exact write-principal mechanism and optional identity-aware proxy policy.
-- Long-term topology beyond the initial same-site deployment on B.
+- Long-term topology beyond the initial deployment that colocates the Control
+  Plane and Runner Host.
 - Ownership and rotation policy for the Project Runner `manage_runner`
   integration credential.
 - Supported GitLab edition/version range. The current connector reads exact

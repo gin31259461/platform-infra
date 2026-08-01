@@ -33,8 +33,8 @@ make check STACK=gitlab-runners/dotnet
 make install STACK=gitlab-runners/dotnet
 ```
 
-This prepares B without creating a GitLab Runner Record. Create a
-project-scoped Record with tags `dotnet,podman`, disable untagged jobs, and
+This prepares the Runner Host without creating a GitLab Runner Record. Create
+a project-scoped Record with tags `dotnet,podman`, disable untagged jobs, and
 lock it to the Project. Then register:
 
 ```bash
@@ -62,7 +62,7 @@ make verify STACK=gitlab-runners/dotnet
 Set a strong masked `MSSQL_SA_PASSWORD_UI` variable before SQL Server jobs.
 Run `tests/smoke.gitlab-ci.yml` before adopting the complete example.
 
-## Uninstall from B
+## Uninstall from the Runner Host
 
 Canonical Stack:
 

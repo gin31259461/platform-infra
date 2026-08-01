@@ -4,12 +4,19 @@ stages:
   - validate
   - test
 
+variables:
+  UV_VERSION: "0.12.0"
+  PYTHON_VERSION: "3.14"
+  BASE_LAYER: trixie-slim
+  UV_LINK_MODE: copy
+
 default:
-  image: docker.io/library/python:3.13.5-bookworm
+  image: ghcr.io/astral-sh/uv:$UV_VERSION-python$PYTHON_VERSION-$BASE_LAYER
   before_script:
     - apt-get update
     - apt-get install --yes --no-install-recommends shellcheck ripgrep
-    - pip install --no-cache-dir ansible-core==2.18.6 ansible-lint==25.6.1 yamllint==1.37.1
+    - uv sync --locked
+    - . .venv/bin/activate
     - ansible-galaxy collection install -r requirements.yml
 
 lint:
@@ -29,6 +36,10 @@ validate_frontend_runner:
         - stacks/gitlab-runners/frontend/**/*
         - requirements.yml
         - ansible.cfg
+        - pyproject.toml
+        - uv.lock
+        - .python-version
+        - .gitlab-ci.yml
   script:
     - ./tests/validate-stack.sh gitlab-runners/frontend
 
@@ -44,6 +55,10 @@ validate_dotnet_runner:
         - stacks/gitlab-runners/dotnet/**/*
         - requirements.yml
         - ansible.cfg
+        - pyproject.toml
+        - uv.lock
+        - .python-version
+        - .gitlab-ci.yml
   script:
     - ./tests/validate-stack.sh gitlab-runners/dotnet
 
@@ -58,6 +73,10 @@ validate_all:
         - tests/**/*
         - requirements.yml
         - ansible.cfg
+        - pyproject.toml
+        - uv.lock
+        - .python-version
+        - .gitlab-ci.yml
   script:
     - ./tests/validate-all.sh
 
@@ -88,6 +107,9 @@ validate_agent:
         - agent/**/*
         - packages/contracts/**/*
         - Makefile
+        - pyproject.toml
+        - uv.lock
+        - .python-version
         - .gitlab-ci.yml
   script:
-    - make test-agent
+    - uv run --locked python -m unittest discover -s agent/tests -v

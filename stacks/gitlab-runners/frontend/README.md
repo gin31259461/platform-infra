@@ -25,9 +25,9 @@ make check STACK=gitlab-runners/frontend
 make install STACK=gitlab-runners/frontend
 ```
 
-This prepares B without creating a GitLab Runner Record. Create a
-project-scoped Record with tags `frontend,podman`, disable untagged jobs, and
-lock it to the Project. Then register:
+This prepares the Runner Host without creating a GitLab Runner Record. Create
+a project-scoped Record with tags `frontend,podman`, disable untagged jobs,
+and lock it to the Project. Then register:
 
 ```bash
 read -rsp "GitLab Runner token: " RUNNER_AUTH_TOKEN
@@ -45,7 +45,7 @@ make verify STACK=gitlab-runners/frontend
 
 Run `tests/smoke.gitlab-ci.yml` before adopting the full consumer example.
 
-## Uninstall from B
+## Uninstall from the Runner Host
 
 ```bash
 make uninstall STACK=gitlab-runners/frontend

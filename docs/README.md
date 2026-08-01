@@ -16,8 +16,8 @@ guides for implementation and operations details.
 
 - [Architecture](architecture.md): component boundaries and data flow.
 - [Security](security.md): trust model, secret handling, and prohibited paths.
-- [Product specification](../SPEC.md): current and target behavior.
-- [Domain context](../CONTEXT.md): canonical terminology.
+- [Product specification](spec.md): current and target behavior.
+- [Domain context](context.md): canonical terminology.
 
 ## Contribute
 

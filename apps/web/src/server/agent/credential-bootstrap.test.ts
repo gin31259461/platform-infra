@@ -153,7 +153,7 @@ describe("one-command Host Agent bootstrap", () => {
     const { prisma } = prismaForBootstrap();
     await expect(bootstrapAgent(prisma, {
       canonicalStackName: "gitlab-runners/frontend",
-      controlPlaneUrl: "http://100.64.0.15:3000",
+      controlPlaneUrl: "http://192.0.2.10:3000",
     }, vi.fn(), dependencies())).rejects.toThrow("unavailable or ambiguous");
     expect(prisma.runnerStack.findMany).not.toHaveBeenCalled();
   });

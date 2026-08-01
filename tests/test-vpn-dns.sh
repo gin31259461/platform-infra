@@ -38,12 +38,12 @@ template_vars = {
     "gitlab_runner_timezone": "Asia/Taipei",
     "network": {
         "use_host_network_for_runner_manager": True,
-        "vpn_dns": "100.100.100.100",
+        "vpn_dns": "192.0.2.53",
     },
 }
 
 rendered = template.render(**template_vars)
-if "DNS=100.100.100.100" not in rendered.splitlines():
+if "DNS=192.0.2.53" not in rendered.splitlines():
     raise SystemExit("Runner manager Quadlet does not render the configured VPN DNS.")
 
 template_vars["network"]["vpn_dns"] = ""
@@ -63,7 +63,7 @@ config_path.write_text(
   executor = "docker"
   [runners.docker]
     image = "docker.io/library/node:22.22.0-bookworm"
-    dns = ["192.168.18.1"]
+    dns = ["198.51.100.53"]
     privileged = false
 """,
     encoding="utf-8",
@@ -77,7 +77,7 @@ first = subprocess.run(
         "--config",
         str(config_path),
         "--dns",
-        "100.100.100.100",
+        "192.0.2.53",
     ],
     check=True,
     capture_output=True,
@@ -91,7 +91,7 @@ with config_path.open("rb") as stream:
 runner = config["runners"][0]
 if runner["token"] != original_token:
     raise SystemExit("Runner DNS reconciliation changed the token.")
-if runner["docker"]["dns"] != ["100.100.100.100"]:
+if runner["docker"]["dns"] != ["192.0.2.53"]:
     raise SystemExit("Runner job DNS was not reconciled.")
 if config_path.stat().st_mode & 0o777 != 0o600:
     raise SystemExit("Runner config permissions changed during reconciliation.")
@@ -103,7 +103,7 @@ second = subprocess.run(
         "--config",
         str(config_path),
         "--dns",
-        "100.100.100.100",
+        "192.0.2.53",
     ],
     check=True,
     capture_output=True,

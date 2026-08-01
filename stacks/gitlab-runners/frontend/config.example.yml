@@ -11,7 +11,7 @@ gitlab:
   health_url: https://REPLACE_WITH_GITLAB_HOSTNAME/users/sign_in
 
 runner:
-  name: A-frontend-podman
+  name: frontend-podman
   user: gitlab-runner-frontend
   container_name: gitlab-runner-frontend
   service_name: gitlab-runner-frontend
@@ -39,8 +39,7 @@ runner:
 network:
   vpn_interface: REPLACE_WITH_VPN_INTERFACE
   validation_image: docker.io/curlimages/curl:8.12.1
-  # Set this to the VPN resolver IP when host DNS changes during VPN startup.
-  # For Tailscale DNS on this host, use "100.100.100.100".
+  # Set this to the VPN resolver IP when Host DNS changes during VPN startup.
   vpn_dns: ""
   use_host_network_for_runner_manager: true
 

@@ -2,26 +2,30 @@
 
 ## Topology
 
-```text
-A: GitLab
-   ^                      C: Browser
-   | VPN + verified HTTPS    |
-   |                         | trusted HTTPS
-   |                         v
-B: Arch Runner Host + Next.js Control Plane
-   |-- PostgreSQL
-   |-- GitLab connector
-   |-- Host Provisioning CLI
-   `-- isolated Runner Stack(s)
-         |-- dedicated Linux user
-         |-- systemd user + Quadlet
-         |-- rootless Podman Runner manager
-         `-- read-only Host Agent
+```mermaid
+flowchart LR
+    Browser[Operator browser] -->|trusted network + verified HTTPS| ControlPlane[Control Plane]
+    ControlPlane --> PostgreSQL[(PostgreSQL)]
+    ControlPlane -->|GitLab connector| GitLab[GitLab instance]
+
+    subgraph RunnerHost[Runner Host]
+        Provisioner[Host provisioning CLI]
+        subgraph RunnerStack[Isolated Runner Stack]
+            Manager[Rootless Podman Runner manager]
+            Agent[Read-only Host Agent]
+        end
+        Provisioner --> Manager
+    end
+
+    Manager -->|external VPN + verified HTTPS| GitLab
+    Agent -->|bounded observations| ControlPlane
 ```
 
-GitLab initiates no inbound Host connection. Runner managers poll GitLab over
-host networking to use the externally managed VPN. CI jobs receive isolated
-per-build networks and never receive host networking or the Podman socket.
+GitLab initiates no inbound Runner Host connection. Runner managers poll
+GitLab over Host networking to use the externally managed VPN. CI jobs receive
+isolated per-build networks and never receive Host networking or the Podman
+socket. The initial deployment may colocate the Control Plane and Runner Host,
+but their component boundaries do not depend on that topology.
 
 ## Control Plane data flow
 
@@ -73,6 +77,8 @@ The Agent:
 - reads its scoped credential from a fixed `0600` file;
 - keeps at most one bounded pending observation in a `0700` state directory;
 - retries the same delivery ID before collecting again;
+- discards an outbox entry when re-enrollment changes its Host or Stack
+  identity;
 - never opens the Podman socket or reads `config.toml` contents;
 - cannot receive commands, paths, or Operations.
 

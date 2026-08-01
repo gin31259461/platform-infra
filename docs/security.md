@@ -91,9 +91,9 @@ run untagged jobs. The CLI never unpauses or deletes them.
 ## Destructive local uninstall
 
 Uninstall requires an interactive terminal and exact target confirmation. It
-permanently removes the B-side Runner user and data. Targets are resolved from
-canonical Template names and validated platform instance IDs; caller-supplied
-paths are rejected.
+permanently removes the local Runner user and data from the Runner Host.
+Targets are resolved from canonical Template names and validated platform
+instance IDs; caller-supplied paths are rejected.
 
 The corresponding GitLab Runner Record is always preserved. Do not add
 automatic unregister or delete behavior to cleanup, rollback, diagnosis, or

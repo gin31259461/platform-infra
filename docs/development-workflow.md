@@ -36,7 +36,7 @@ a clean exit with status zero.
 - Host Agent and GitLab connectors are read-only.
 - Host mutation stays in fixed operator workflows with explicit authorization.
 
-Use domain terms from `CONTEXT.md`. Keep modules narrow at the boundary and
+Use domain terms from `context.md`. Keep modules narrow at the boundary and
 deep internally: callers should pass typed identities and intent, not commands
 or filesystem paths.
 

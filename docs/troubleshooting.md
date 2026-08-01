@@ -22,8 +22,10 @@ belongs to a revoked Host. `403` means its report targets a different or
 unregistered Stack. Do not weaken identity checks.
 
 `Observation delivery failed` preserves the bounded pending delivery for the
-next timer run. `Observation refresh request failed` means the Agent could not
-obtain its scheduling decision and does not fabricate a report.
+next timer run when the Host and Stack identity is unchanged. A current Agent
+discards an outbox entry from a previous enrollment before collecting fresh
+evidence. `Observation refresh request failed` means the Agent could not obtain
+its scheduling decision and does not fabricate a report.
 
 Inspect the Runner user's units:
 
@@ -109,8 +111,8 @@ commands in `docs/control-plane.md` remain available for diagnosis.
 
 ## Uninstall and recovery
 
-Uninstall is intentionally destructive on B and requires exact confirmation.
-It preserves the GitLab Runner Record. For routine replacement:
+Uninstall is intentionally destructive on the Runner Host and requires exact
+confirmation. It preserves the GitLab Runner Record. For routine replacement:
 
 1. pause the new or failing Record in GitLab;
 2. keep replacement capacity available;

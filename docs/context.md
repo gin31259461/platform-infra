@@ -1,4 +1,4 @@
-# GitLab Runner Platform
+# Domain Context
 
 The GitLab Runner Platform manages the lifecycle and operational health of
 self-hosted, project-scoped GitLab Runners without weakening the isolation of

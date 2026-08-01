@@ -15,7 +15,7 @@ Confirm the Host has:
 Automation never configures the VPN. Keep deployment workloads on a separate
 Runner trust boundary.
 
-## Bootstrap B
+## Bootstrap the Runner Host
 
 ```bash
 make bootstrap
@@ -90,9 +90,10 @@ pnpm runner:provision -- \
 ```
 
 The command authorizes a durable Operation, derives a fixed Stack identity,
-prepares B, creates the paused GitLab Runner Record, streams its one-time token
-to registration, records the correlation, and installs the scoped Host Agent.
-A partial failure remains visible and never triggers automatic GitLab deletion.
+prepares the Runner Host, creates the paused GitLab Runner Record, streams its
+one-time token to registration, records the correlation, and installs the
+scoped Host Agent. A partial failure remains visible and never triggers
+automatic GitLab deletion.
 
 ## Host Agent
 
@@ -112,7 +113,7 @@ pnpm host:bootstrap-agent \
 
 The Agent runs as the Runner user from its own package-free `.venv`.
 
-## Uninstall from B
+## Uninstall from the Runner Host
 
 Canonical Stack:
 

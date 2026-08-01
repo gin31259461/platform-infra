@@ -79,13 +79,13 @@ uv run --locked yamllint \
 
 uv run --locked ansible-lint "${PROJECT_ROOT}/playbooks/gitlab-runner.yml"
 
-if rg --hidden --glob '!SPEC.md' --glob '!stacks/**/config.yml' \
+if rg --hidden --glob '!docs/spec.md' --glob '!stacks/**/config.yml' \
   'glrt-[A-Za-z0-9_-]{12,}' "${PROJECT_ROOT}"; then
   echo "Possible Runner authentication token found." >&2
   exit 1
 fi
 
-if rg --hidden --glob '!SPEC.md' --glob '!docs/**' --glob '!tests/lint.sh' \
+if rg --hidden --glob '!docs/spec.md' --glob '!docs/**' --glob '!tests/lint.sh' \
   --glob '!stacks/**/config.yml' \
   'BEGIN (RSA |EC |OPENSSH )?PRIVATE KEY' "${PROJECT_ROOT}"; then
   echo "Possible private key found." >&2
