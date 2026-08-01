@@ -17,6 +17,7 @@ secrets/
 node_modules/
 .next/
 apps/web/generated/prisma/
+apps/web/next-env.d.ts
 coverage/
 *.tsbuildinfo
 __pycache__/
