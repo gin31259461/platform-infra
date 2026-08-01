@@ -85,6 +85,24 @@ class AgentConfigurationTests(unittest.TestCase):
         ).read_text(encoding="utf-8")
         self.assertIn("OnBootSec=2s", timer)
         self.assertIn("OnUnitActiveSec=5s", timer)
+        self.assertIn("AccuracySec=1s", timer)
+
+    def test_installer_restarts_an_active_timer_after_reloading_units(self):
+        installer = (
+            Path(__file__).parents[2]
+            / "scripts/install-agent.sh"
+        ).read_text(encoding="utf-8")
+        reload_command = "systemctl --user daemon-reload"
+        restart_command = (
+            "systemctl --user restart \\\n"
+            "  gitlab-runner-platform-agent.timer"
+        )
+        self.assertIn(restart_command, installer)
+        self.assertNotIn("systemctl --user enable --now", installer)
+        self.assertLess(
+            installer.index(reload_command),
+            installer.index(restart_command),
+        )
 
     def test_parses_the_configured_gitlab_health_path(self):
         self.assertEqual(
@@ -110,8 +128,8 @@ class AgentConfigurationTests(unittest.TestCase):
         for origin in (
             "http://127.0.0.1:3000",
             "http://localhost:3000",
-            "http://100.64.0.15:3000",
-            "http://192.168.18.226:3000",
+            "http://192.0.2.10:3000",
+            "http://198.51.100.10:3000",
         ):
             with self.assertRaisesRegex(AgentError, "loopback HTTP origin"):
                 parse_config({**VALID_CONFIG, "controlPlaneUrl": origin})
@@ -119,7 +137,7 @@ class AgentConfigurationTests(unittest.TestCase):
             parse_config({
                 **VALID_CONFIG,
                 "allowPlaintextLoopback": True,
-                "controlPlaneUrl": "http://100.64.0.15:3000",
+                "controlPlaneUrl": "http://192.0.2.10:3000",
             })
 
     def test_rejects_invalid_plaintext_policy_and_unknown_fields(self):

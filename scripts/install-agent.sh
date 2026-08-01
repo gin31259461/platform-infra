@@ -119,7 +119,9 @@ printf '%s' "${credential_secret}" | as_root install -o "${runner_user}" -g "${r
 credential_secret=""
 
 as_runner_user "${runner_user}" "${runner_uid}" systemctl --user daemon-reload
-as_runner_user "${runner_user}" "${runner_uid}" systemctl --user enable --now \
+as_runner_user "${runner_user}" "${runner_uid}" systemctl --user enable \
+  gitlab-runner-platform-agent.timer
+as_runner_user "${runner_user}" "${runner_uid}" systemctl --user restart \
   gitlab-runner-platform-agent.timer
 
 info "Host Agent installed for ${STACK_NAME}."
