@@ -154,6 +154,7 @@ export async function bootstrapAgent(
     take: 2,
     where: {
       canonicalName: input.canonicalStackName,
+      decommissionedAt: null,
       host: { revokedAt: null },
       id: input.runnerStackId,
     },

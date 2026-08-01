@@ -98,3 +98,7 @@ paths are rejected.
 The corresponding GitLab Runner Record is always preserved. Do not add
 automatic unregister or delete behavior to cleanup, rollback, diagnosis, or
 provisioning compensation.
+
+Provisioned uninstall may mark the exact platform Stack inactive and revoke
+its scoped Agent credentials after local cleanup. This database lifecycle
+change must retain Runner Record references, observations, and audit events.

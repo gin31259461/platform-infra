@@ -62,6 +62,7 @@ export async function issueAgentCredential(
   await prisma.$transaction(async (transaction) => {
     const runnerStack = await transaction.runnerStack.findUnique({
       select: {
+        decommissionedAt: true,
         host: { select: { revokedAt: true } },
         hostId: true,
       },
@@ -69,6 +70,7 @@ export async function issueAgentCredential(
     });
     if (
       !runnerStack
+      || runnerStack.decommissionedAt !== null
       || runnerStack.hostId !== input.hostId
       || runnerStack.host.revokedAt !== null
     ) {

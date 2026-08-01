@@ -54,6 +54,9 @@ describe("Prisma Host Agent observation persistence", () => {
     const result = await new PrismaHostAgentObservationStore(prisma).persist(principal, observation);
 
     expect(result).toEqual({ acceptedStacks: 1, deliveryId: observation.deliveryId, status: "accepted" });
+    expect(transaction.runnerStack.findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({ decommissionedAt: null }),
+    }));
     expect(transaction.observation.createMany).toHaveBeenCalledWith(expect.objectContaining({ skipDuplicates: true }));
     expect(transaction.auditEvent.create).toHaveBeenCalledWith(expect.objectContaining({
       data: expect.objectContaining({

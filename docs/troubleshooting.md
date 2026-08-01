@@ -120,3 +120,14 @@ It preserves the GitLab Runner Record. For routine replacement:
 
 Do not delete observations or audit events merely to roll back application
 code.
+
+If local files for a provisioned instance were removed by an older release
+but it still appears in Web, deploy database migrations and mark the exact
+Stack inactive:
+
+```bash
+pnpm db:deploy
+pnpm runner:decommission -- --stack-id dotnet-REPLACE_WITH_12_HEX
+```
+
+This preserves the GitLab Runner Record and all historical evidence.

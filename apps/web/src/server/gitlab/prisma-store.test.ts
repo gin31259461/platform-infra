@@ -25,15 +25,24 @@ function prismaClient() {
       findMany: vi.fn(async () => [{ gitlabRunnerId: "101", runnerStackId: "frontend-main" }]),
     },
   } as unknown as PrismaClient;
-  return { auditCreate, observationCreate, prisma, transaction };
+  return {
+    auditCreate,
+    observationCreate,
+    prisma,
+    runnerRecordFindMany: prisma.runnerRecordRef.findMany,
+    transaction,
+  };
 }
 
 describe("Prisma GitLab observation store", () => {
   it("lists only explicitly correlated Runner Records", async () => {
-    const { prisma } = prismaClient();
+    const { prisma, runnerRecordFindMany } = prismaClient();
     await expect(new PrismaGitLabObservationStore(prisma).listTargets()).resolves.toEqual([
       { runnerRecordId: "101", runnerStackId: "frontend-main" },
     ]);
+    expect(runnerRecordFindMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: { runnerStack: { decommissionedAt: null } },
+    }));
   });
 
   it("appends an immutable observation and a sanitized audit event", async () => {

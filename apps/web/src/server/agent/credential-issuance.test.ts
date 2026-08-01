@@ -11,12 +11,18 @@ const dependencies = {
   now: () => new Date("2026-08-01T08:00:00.000Z"),
 };
 
-function prismaForTarget(options: { hostId?: string; revokedAt?: Date | null; targetExists?: boolean } = {}) {
+function prismaForTarget(options: {
+  decommissionedAt?: Date | null;
+  hostId?: string;
+  revokedAt?: Date | null;
+  targetExists?: boolean;
+} = {}) {
   const transaction = {
     agentCredential: { create: vi.fn(async () => ({})) },
     auditEvent: { create: vi.fn(async () => ({})) },
     runnerStack: {
       findUnique: vi.fn(async () => options.targetExists === false ? null : ({
+        decommissionedAt: options.decommissionedAt ?? null,
         host: { revokedAt: options.revokedAt ?? null },
         hostId: options.hostId ?? "host-01",
       })),
@@ -64,6 +70,7 @@ describe("Host Agent credential issuance", () => {
       { targetExists: false },
       { hostId: "host-02" },
       { revokedAt: new Date("2026-08-01T07:00:00.000Z") },
+      { decommissionedAt: new Date("2026-08-01T07:00:00.000Z") },
     ]) {
       const { prisma, transaction } = prismaForTarget(options);
       await expect(issueAgentCredential(prisma, {

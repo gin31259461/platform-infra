@@ -15,6 +15,7 @@ export class PrismaGitLabObservationStore implements GitLabObservationStore {
     const records = await this.prisma.runnerRecordRef.findMany({
       orderBy: { runnerStackId: "asc" },
       select: { gitlabRunnerId: true, runnerStackId: true },
+      where: { runnerStack: { decommissionedAt: null } },
     });
     return records.map((record) => ({
       runnerRecordId: record.gitlabRunnerId,

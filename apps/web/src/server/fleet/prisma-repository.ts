@@ -20,6 +20,7 @@ export class PrismaFleetRepository implements FleetRepository {
         runnerRecord: true,
       },
       orderBy: { id: "asc" },
+      where: { decommissionedAt: null },
     });
     const runnerStackIds = runnerStacks.map((runnerStack) => runnerStack.id);
     const latestObservations = async (source: ObservationSource) => this.prisma.observation.findMany({

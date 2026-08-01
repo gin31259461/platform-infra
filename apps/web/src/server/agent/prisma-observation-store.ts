@@ -53,6 +53,7 @@ export class PrismaHostAgentObservationStore implements HostAgentObservationStor
       const registeredStacks = await transaction.runnerStack.findMany({
         select: { canonicalName: true, id: true, workload: true },
         where: {
+          decommissionedAt: null,
           hostId: principal.hostId,
           id: { in: observation.stacks.map((stack: HostAgentStackObservation) => stack.id) },
         },

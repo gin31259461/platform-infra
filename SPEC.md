@@ -182,6 +182,9 @@ Requirement IDs are stable references for issues, tests, and release notes.
   separate states rather than silently merged.
 - **INV-006**: Every Runner Stack has a stable platform ID and records the
   exact Runner Template revision from which it was created.
+- **INV-007**: A decommissioned Runner Stack is excluded from active fleet
+  reads and observation collection without deleting its Runner Record
+  reference, observations, or audit history.
 
 ### 7.2 Observation and health
 
@@ -481,8 +484,9 @@ The first write-capable release is complete when:
 
 Group and Instance provisioning, remote uninstall or purge, and Runner Record
 deletion require separate specification and security review. Local CLI
-uninstall removes one Runner Stack and Linux user but deliberately preserves
-the GitLab Runner Record.
+uninstall removes one Runner Stack and Linux user, marks a provisioned Stack
+inactive in Control Plane inventory, and deliberately preserves the GitLab
+Runner Record and historical evidence.
 
 ## 13. Open decisions before implementation
 

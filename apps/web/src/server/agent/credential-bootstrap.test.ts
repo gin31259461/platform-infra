@@ -143,6 +143,7 @@ describe("one-command Host Agent bootstrap", () => {
     expect(prisma.runnerStack.findMany).toHaveBeenCalledWith(expect.objectContaining({
       where: expect.objectContaining({
         canonicalName: "gitlab-runners/dotnet",
+        decommissionedAt: null,
         id: "dotnet-b08629f8dfa8",
       }),
     }));

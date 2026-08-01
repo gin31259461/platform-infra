@@ -33,6 +33,7 @@
     "provisioning:host:stage": "pnpm --filter @gitlab-runner-platform/web provisioning:host:stage",
     "provisioning:worker:run": "pnpm --filter @gitlab-runner-platform/web provisioning:worker:run",
     "runner:provision": "./scripts/provision-project-runner.sh",
+    "runner:decommission": "pnpm --filter @gitlab-runner-platform/web runner:decommission",
     "validate:web": "pnpm db:generate && pnpm workspace:typecheck && pnpm workspace:test && pnpm web:lint && pnpm web:build"
   }
 }

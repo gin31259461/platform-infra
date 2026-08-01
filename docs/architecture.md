@@ -123,5 +123,8 @@ stops the Runner manager and Agent, removes the container, disables lingering,
 terminates the user manager, deletes the Linux user and home, and removes a
 generated instance config when applicable.
 
-Uninstall does not contact GitLab. Runner Record pause or deletion is always a
-separate manual decision.
+For a provisioned instance, uninstall then marks its durable Stack inactive,
+revokes its scoped Agent credentials, and removes it from active fleet reads.
+Runner Record references, observations, and audit history remain. Uninstall
+does not contact GitLab; Runner Record pause or deletion is always a separate
+manual decision.

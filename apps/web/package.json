@@ -27,7 +27,8 @@
     "provisioning:project:allow": "tsx --env-file-if-exists=.env scripts/allow-provisioning-project.ts",
     "provisioning:operation:request": "tsx --env-file-if-exists=.env scripts/request-provisioning-operation.ts",
     "provisioning:host:stage": "tsx --env-file-if-exists=.env scripts/prepare-provisioning-host.ts",
-    "provisioning:worker:run": "tsx --env-file-if-exists=.env scripts/run-provisioning-worker.ts"
+    "provisioning:worker:run": "tsx --env-file-if-exists=.env scripts/run-provisioning-worker.ts",
+    "runner:decommission": "tsx --env-file-if-exists=.env scripts/decommission-runner-stack.ts"
   },
   "dependencies": {
     "@emotion/cache": "11.14.0",

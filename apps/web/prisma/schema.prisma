@@ -97,6 +97,7 @@ model RunnerStack {
   workload           String
   hostId             String
   templateRevisionId String?
+  decommissionedAt   DateTime?
   createdAt          DateTime                @default(now())
   updatedAt          DateTime                @updatedAt
   host               RunnerHost              @relation(fields: [hostId], references: [id], onDelete: Restrict)
@@ -106,6 +107,7 @@ model RunnerStack {
   agentCredentials   AgentCredential[]
 
   @@index([hostId, canonicalName])
+  @@index([decommissionedAt])
   @@index([templateRevisionId])
 }
 

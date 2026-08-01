@@ -36,7 +36,8 @@ _Avoid_: Runner Stack, Runner type
 **Runner Stack**:
 A deployed instance created from one Runner Template. It contains one Runner
 Manager and its dedicated host identity, configuration, cache, runtime, and
-trust boundary.
+trust boundary. Decommissioning removes its local runtime and excludes it from
+the active fleet, while its durable identity and historical evidence remain.
 _Avoid_: Runner Template, environment
 
 **Job Container**:

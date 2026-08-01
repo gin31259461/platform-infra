@@ -1,22 +1,24 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import type { PrismaClient } from "../../../generated/prisma/client";
 import { PrismaFleetRepository } from "./prisma-repository";
 
-function prismaWithStacks(stacks: unknown[], observations: unknown[] = []): PrismaClient {
-  return {
+function prismaWithStacks(stacks: unknown[], observations: unknown[] = []) {
+  const runnerStackFindMany = vi.fn(async () => stacks);
+  const prisma = {
     observation: {
       findMany: async ({ where }: { where: { source: string } }) => observations.filter(
         (observation) => (observation as { source: string }).source === where.source,
       ),
     },
-    runnerStack: { findMany: async () => stacks },
+    runnerStack: { findMany: runnerStackFindMany },
   } as unknown as PrismaClient;
+  return { prisma, runnerStackFindMany };
 }
 
 describe("Prisma Fleet repository", () => {
   it("builds the read model from the latest Host Agent observation", async () => {
-    const repository = new PrismaFleetRepository(prismaWithStacks([{
+    const { prisma, runnerStackFindMany } = prismaWithStacks([{
       canonicalName: "gitlab-runners/frontend",
       host: { displayName: "runner-arch-01" },
       hostId: "host-01",
@@ -51,7 +53,8 @@ describe("Prisma Fleet repository", () => {
           runnerRecordId: "101",
           state: "online",
         },
-      }]));
+      }]);
+    const repository = new PrismaFleetRepository(prisma);
 
     await expect(repository.getSnapshot(new Date("2026-07-31T09:00:00.000Z"))).resolves.toMatchObject({
       stacks: [{
@@ -63,17 +66,21 @@ describe("Prisma Fleet repository", () => {
         projectPath: "shop/web-store",
       }],
     });
+    expect(runnerStackFindMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: { decommissionedAt: null },
+    }));
   });
 
   it("shows an enrolled Stack without observations as unknown", async () => {
-    const repository = new PrismaFleetRepository(prismaWithStacks([{
+    const { prisma } = prismaWithStacks([{
       canonicalName: "gitlab-runners/dotnet",
       host: { displayName: "runner-arch-02" },
       hostId: "host-02",
       id: "dotnet-orders",
       runnerRecord: null,
       workload: "dotnet",
-    }]));
+    }]);
+    const repository = new PrismaFleetRepository(prisma);
 
     await expect(repository.getSnapshot(new Date("2026-07-31T09:00:00.000Z"))).resolves.toMatchObject({
       stacks: [{

@@ -131,7 +131,8 @@ make uninstall \
 Type the exact confirmation shown. Uninstall permanently removes the local
 Runner manager, Agent, Linux user, home, token-bearing config, cache, and
 container storage. A generated instance config is also removed from the fixed
-ignored staging directory.
+ignored staging directory. The instance is marked inactive in PostgreSQL and
+disappears from the active fleet; observations and audit history remain.
 
 The GitLab Runner Record is deliberately preserved. Pause or delete it in
 GitLab only after reviewing its jobs and replacement capacity.

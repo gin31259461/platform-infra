@@ -90,7 +90,9 @@ make uninstall \
 Uninstall requires exact confirmation, then permanently removes the local
 Runner manager, Host Agent, Linux user, installed configuration, cache, and
 container storage. A canonical repository `config.yml` is preserved for
-reinstallation. It never unregisters or deletes the GitLab Runner Record.
+reinstallation. A provisioned instance is also marked inactive in PostgreSQL,
+so it leaves the active UI while its observations and audit history remain.
+Uninstall never unregisters or deletes the GitLab Runner Record.
 
 ## Run the Control Plane
 

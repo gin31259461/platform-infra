@@ -21,6 +21,10 @@ The database stores Runner Hosts, Stacks, Runner Record references, scoped
 credential digests, immutable observations, durable provisioning Operations,
 and redacted audit events.
 
+Provisioned uninstall marks a Stack inactive instead of deleting its durable
+inventory. Active fleet reads, GitLab synchronization, credential issuance,
+and Host observation ingestion exclude inactive Stacks.
+
 ## GitLab credentials
 
 Install a monitoring token with only `read_api`:
@@ -133,8 +137,8 @@ pnpm gitlab:sync
 ```
 
 Synchronization queries only Runner Record IDs already correlated in
-PostgreSQL. It appends GitLab status, pause, contact, and job-execution
-observations without listing or mutating Runners.
+PostgreSQL for active Stacks. It appends GitLab status, pause, contact, and
+job-execution observations without listing or mutating Runners.
 
 `pnpm dev` and `pnpm start` own the normal lifecycle:
 

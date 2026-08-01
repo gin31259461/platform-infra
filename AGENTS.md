@@ -96,14 +96,16 @@ make idempotency STACK="${STACK}"
 make uninstall STACK="${STACK}"
 pnpm host:bootstrap-agent --stack "${STACK}"
 pnpm provisioning:project:allow -- --path namespace/project
+pnpm runner:decommission -- --stack-id <stack-id>
 pnpm runner:provision -- --project namespace/project --template "${STACK}"
 ```
 
 - Bootstrap performs a full Arch upgrade.
 - Registration and provisioning contact GitLab and install token-bearing
   Runner configuration.
-- Uninstall permanently removes the local Runner user and all local data. It
-  must never delete or unregister the GitLab Runner Record.
+- Uninstall permanently removes the local Runner user and all local data. A
+  provisioned instance is marked inactive in PostgreSQL; it must never delete
+  or unregister the GitLab Runner Record or historical evidence.
 - Never work around sudo or ask the user to expose a password.
 - Validate the external VPN; never configure, reconnect, or store it.
 
