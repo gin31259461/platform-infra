@@ -44,6 +44,11 @@ The Web runtime has only the PostgreSQL fleet repository. Missing inventory is
 rendered as no data. Host and GitLab observations are immutable, independently
 timestamped, and independently stale.
 
+Prisma exposes idiomatic TypeScript model and field names. Its database maps
+use plural snake_case table names and snake_case columns, enums, indexes, and
+constraints. The single base migration represents a new empty deployment and
+installs the approved frontend and .NET Runner Template revisions.
+
 ## Server lifecycle
 
 The start supervisor completes one GitLab synchronization before opening the

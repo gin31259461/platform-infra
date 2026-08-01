@@ -68,23 +68,23 @@ async function main() {
     await client.query("BEGIN");
     const now = new Date();
     await client.query(
-      'INSERT INTO "RunnerHost" ("id", "displayName", "enrolledAt", "createdAt", "updatedAt") VALUES ($1, $2, $3, $3, $3)',
+      'INSERT INTO "runner_hosts" ("id", "display_name", "enrolled_at", "created_at", "updated_at") VALUES ($1, $2, $3, $3, $3)',
       [options["host-id"], options["display-name"], now],
     );
     await client.query(
-      'INSERT INTO "RunnerStack" ("id", "canonicalName", "workload", "hostId", "createdAt", "updatedAt") VALUES ($1, $2, $3, $4, $5, $5)',
+      'INSERT INTO "runner_stacks" ("id", "canonical_name", "workload", "host_id", "created_at", "updated_at") VALUES ($1, $2, $3, $4, $5, $5)',
       [options["stack-id"], options["stack-name"], options.workload, options["host-id"], now],
     );
     await client.query(
-      'INSERT INTO "RunnerRecordRef" ("id", "runnerStackId", "gitlabRunnerId", "projectPath") VALUES ($1, $2, $3, $4)',
+      'INSERT INTO "runner_record_refs" ("id", "runner_stack_id", "gitlab_runner_id", "project_path") VALUES ($1, $2, $3, $4)',
       [randomUUID(), options["stack-id"], options["runner-record-id"], options["project-path"]],
     );
     await client.query(
-      'INSERT INTO "AgentCredential" ("id", "runnerHostId", "runnerStackId", "tokenDigest", "createdAt") VALUES ($1, $2, $3, $4, $5)',
+      'INSERT INTO "agent_credentials" ("id", "runner_host_id", "runner_stack_id", "token_digest", "created_at") VALUES ($1, $2, $3, $4, $5)',
       [credentialId, options["host-id"], options["stack-id"], tokenDigest, now],
     );
     await client.query(
-      'INSERT INTO "AuditEvent" ("id", "correlationId", "actorId", "eventType", "targetType", "targetId", "payload", "occurredAt") VALUES ($1, $2, $3, $4, $5, $6, $7, $8)',
+      'INSERT INTO "audit_events" ("id", "correlation_id", "actor_id", "event_type", "target_type", "target_id", "payload", "occurred_at") VALUES ($1, $2, $3, $4, $5, $6, $7, $8)',
       [randomUUID(), randomUUID(), "bootstrap-cli", "runner-host.enrolled", "runner-host", options["host-id"], JSON.stringify({ credentialId, stackId: options["stack-id"] }), now],
     );
     await client.query("COMMIT");

@@ -430,6 +430,17 @@ def load_pending(path: Path) -> dict[str, object] | None:
     return value
 
 
+def pending_matches_identity(observation: dict[str, object], config: AgentConfig) -> bool:
+    stacks = observation.get("stacks")
+    return (
+        observation.get("hostId") == config.host_id
+        and isinstance(stacks, list)
+        and len(stacks) == 1
+        and isinstance(stacks[0], dict)
+        and stacks[0].get("id") == config.stack.id
+    )
+
+
 class _NoRedirect(urllib.request.HTTPRedirectHandler):
     def redirect_request(self, request, file_pointer, code, message, headers, new_url):  # noqa: ANN001
         return None
@@ -511,6 +522,9 @@ def run_once(
     config = load_config(paths.config_file)
     secret = load_credential(paths.credential_file)
     pending = load_pending(paths.pending_file)
+    if pending is not None and not pending_matches_identity(pending, config):
+        paths.pending_file.unlink()
+        pending = None
     if pending is not None:
         sender(config, secret, pending)
         paths.pending_file.unlink()

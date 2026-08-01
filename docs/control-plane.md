@@ -21,6 +21,11 @@ The database stores Runner Hosts, Stacks, Runner Record references, scoped
 credential digests, immutable observations, durable provisioning Operations,
 and redacted audit events.
 
+Physical PostgreSQL identifiers use snake_case. `pnpm db:deploy` applies the
+single base migration on a new database and installs the approved frontend and
+.NET Runner Template revisions. Existing deployments receive new incremental
+migrations after that baseline; do not edit an applied migration.
+
 Provisioned uninstall marks a Stack inactive instead of deleting its durable
 inventory. Active fleet reads, GitLab synchronization, credential issuance,
 and Host observation ingestion exclude inactive Stacks.

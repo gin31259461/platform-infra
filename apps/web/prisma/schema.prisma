@@ -8,221 +8,249 @@ datasource db {
 }
 
 enum PlatformRole {
-  VIEWER
-  OPERATOR
-  ADMINISTRATOR
-  AUDITOR
+  VIEWER        @map("viewer")
+  OPERATOR      @map("operator")
+  ADMINISTRATOR @map("administrator")
+  AUDITOR       @map("auditor")
+
+  @@map("platform_role")
 }
 
 enum ObservationSource {
-  HOST_AGENT
-  GITLAB
+  HOST_AGENT @map("host_agent")
+  GITLAB     @map("gitlab")
+
+  @@map("observation_source")
 }
 
 enum OperationType {
-  PROVISION_PROJECT_RUNNER
+  PROVISION_PROJECT_RUNNER @map("provision_project_runner")
+
+  @@map("operation_type")
 }
 
 enum OperationState {
-  REQUESTED
-  AUTHORIZED
-  DISPATCHED
-  RUNNING
-  SUCCEEDED
-  FAILED
-  PARTIALLY_FAILED
-  UNKNOWN
-  CANCELLED
-  EXPIRED
+  REQUESTED        @map("requested")
+  AUTHORIZED       @map("authorized")
+  DISPATCHED       @map("dispatched")
+  RUNNING          @map("running")
+  SUCCEEDED        @map("succeeded")
+  FAILED           @map("failed")
+  PARTIALLY_FAILED @map("partially_failed")
+  UNKNOWN          @map("unknown")
+  CANCELLED        @map("cancelled")
+  EXPIRED          @map("expired")
+
+  @@map("operation_state")
 }
 
 enum ProvisioningStage {
-  AUTHORIZATION
-  GITLAB_RUNNER_CREATION
-  HOST_PREPARATION
-  RUNNER_REGISTRATION
-  VERIFICATION
-  FIRST_OBSERVATION
+  AUTHORIZATION          @map("authorization")
+  GITLAB_RUNNER_CREATION @map("gitlab_runner_creation")
+  HOST_PREPARATION       @map("host_preparation")
+  RUNNER_REGISTRATION    @map("runner_registration")
+  VERIFICATION           @map("verification")
+  FIRST_OBSERVATION      @map("first_observation")
+
+  @@map("provisioning_stage")
 }
 
 model User {
-  id              String           @id @default(cuid())
-  externalSubject String           @unique
-  displayName     String
-  createdAt       DateTime         @default(now())
-  updatedAt       DateTime         @updatedAt
+  id              String           @id(map: "users_pkey") @default(cuid())
+  externalSubject String           @unique(map: "users_external_subject_key") @map("external_subject")
+  displayName     String           @map("display_name")
+  createdAt       DateTime         @default(now()) @map("created_at")
+  updatedAt       DateTime         @updatedAt @map("updated_at")
   roles           RoleAssignment[]
+
+  @@map("users")
 }
 
 model RoleAssignment {
-  id        String       @id @default(cuid())
-  userId    String
+  id        String       @id(map: "role_assignments_pkey") @default(cuid())
+  userId    String       @map("user_id")
   role      PlatformRole
-  createdAt DateTime     @default(now())
-  user      User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime     @default(now()) @map("created_at")
+  user      User         @relation(fields: [userId], references: [id], onDelete: Cascade, map: "role_assignments_user_id_fkey")
 
-  @@unique([userId, role])
+  @@unique([userId, role], map: "role_assignments_user_id_role_key")
+  @@map("role_assignments")
 }
 
 model RunnerHost {
-  id               String            @id
-  displayName      String
-  enrolledAt       DateTime
-  revokedAt        DateTime?
-  createdAt        DateTime          @default(now())
-  updatedAt        DateTime          @updatedAt
+  id               String            @id(map: "runner_hosts_pkey")
+  displayName      String            @map("display_name")
+  enrolledAt       DateTime          @map("enrolled_at")
+  revokedAt        DateTime?         @map("revoked_at")
+  createdAt        DateTime          @default(now()) @map("created_at")
+  updatedAt        DateTime          @updatedAt @map("updated_at")
   stacks           RunnerStack[]
   agentCredentials AgentCredential[]
+
+  @@map("runner_hosts")
 }
 
 model AgentCredential {
-  id            String       @id
-  runnerHostId  String
-  runnerStackId String?
-  tokenDigest   String
-  createdAt     DateTime     @default(now())
-  expiresAt     DateTime?
-  revokedAt     DateTime?
-  lastUsedAt    DateTime?
-  runnerHost    RunnerHost   @relation(fields: [runnerHostId], references: [id], onDelete: Cascade)
-  runnerStack   RunnerStack? @relation(fields: [runnerStackId], references: [id], onDelete: Cascade)
+  id            String       @id(map: "agent_credentials_pkey")
+  runnerHostId  String       @map("runner_host_id")
+  runnerStackId String?      @map("runner_stack_id")
+  tokenDigest   String       @map("token_digest")
+  createdAt     DateTime     @default(now()) @map("created_at")
+  expiresAt     DateTime?    @map("expires_at")
+  revokedAt     DateTime?    @map("revoked_at")
+  lastUsedAt    DateTime?    @map("last_used_at")
+  runnerHost    RunnerHost   @relation(fields: [runnerHostId], references: [id], onDelete: Cascade, map: "agent_credentials_runner_host_id_fkey")
+  runnerStack   RunnerStack? @relation(fields: [runnerStackId], references: [id], onDelete: Cascade, map: "agent_credentials_runner_stack_id_fkey")
 
-  @@index([runnerHostId])
-  @@index([runnerStackId])
+  @@index([runnerHostId], map: "agent_credentials_runner_host_id_idx")
+  @@index([runnerStackId], map: "agent_credentials_runner_stack_id_idx")
+  @@map("agent_credentials")
 }
 
 model RunnerStack {
-  id                 String                  @id
-  canonicalName      String
+  id                 String                  @id(map: "runner_stacks_pkey")
+  canonicalName      String                  @map("canonical_name")
   workload           String
-  hostId             String
-  templateRevisionId String?
-  decommissionedAt   DateTime?
-  createdAt          DateTime                @default(now())
-  updatedAt          DateTime                @updatedAt
-  host               RunnerHost              @relation(fields: [hostId], references: [id], onDelete: Restrict)
-  templateRevision   RunnerTemplateRevision? @relation(fields: [templateRevisionId], references: [id], onDelete: Restrict)
+  hostId             String                  @map("host_id")
+  templateRevisionId String?                 @map("template_revision_id")
+  decommissionedAt   DateTime?               @map("decommissioned_at")
+  createdAt          DateTime                @default(now()) @map("created_at")
+  updatedAt          DateTime                @updatedAt @map("updated_at")
+  host               RunnerHost              @relation(fields: [hostId], references: [id], onDelete: Restrict, map: "runner_stacks_host_id_fkey")
+  templateRevision   RunnerTemplateRevision? @relation(fields: [templateRevisionId], references: [id], onDelete: Restrict, map: "runner_stacks_template_revision_id_fkey")
   runnerRecord       RunnerRecordRef?
   observations       Observation[]
   agentCredentials   AgentCredential[]
 
-  @@index([hostId, canonicalName])
-  @@index([decommissionedAt])
-  @@index([templateRevisionId])
+  @@index([hostId, canonicalName], map: "runner_stacks_host_id_canonical_name_idx")
+  @@index([decommissionedAt], map: "runner_stacks_decommissioned_at_idx")
+  @@index([templateRevisionId], map: "runner_stacks_template_revision_id_idx")
+  @@map("runner_stacks")
 }
 
 model GitLabProjectRef {
-  id              String      @id
-  gitlabProjectId String      @unique
-  path            String      @unique
+  id              String      @id(map: "gitlab_project_refs_pkey")
+  gitlabProjectId String      @unique(map: "gitlab_project_refs_gitlab_project_id_key") @map("gitlab_project_id")
+  path            String      @unique(map: "gitlab_project_refs_path_key")
   enabled         Boolean     @default(true)
-  createdAt       DateTime    @default(now())
-  updatedAt       DateTime    @updatedAt
+  createdAt       DateTime    @default(now()) @map("created_at")
+  updatedAt       DateTime    @updatedAt @map("updated_at")
   operations      Operation[]
+
+  @@map("gitlab_project_refs")
 }
 
 model RunnerTemplate {
-  id            String                   @id
-  canonicalName String                   @unique
+  id            String                   @id(map: "runner_templates_pkey")
+  canonicalName String                   @unique(map: "runner_templates_canonical_name_key") @map("canonical_name")
   workload      String
-  createdAt     DateTime                 @default(now())
-  updatedAt     DateTime                 @updatedAt
+  createdAt     DateTime                 @default(now()) @map("created_at")
+  updatedAt     DateTime                 @updatedAt @map("updated_at")
   revisions     RunnerTemplateRevision[]
+
+  @@map("runner_templates")
 }
 
 model RunnerTemplateRevision {
-  id               String         @id
-  runnerTemplateId String
+  id               String         @id(map: "runner_template_revisions_pkey")
+  runnerTemplateId String         @map("runner_template_id")
   revision         String
   policy           Json
-  approvedAt       DateTime
-  retiredAt        DateTime?
-  createdAt        DateTime       @default(now())
-  runnerTemplate   RunnerTemplate @relation(fields: [runnerTemplateId], references: [id], onDelete: Restrict)
+  approvedAt       DateTime       @map("approved_at")
+  retiredAt        DateTime?      @map("retired_at")
+  createdAt        DateTime       @default(now()) @map("created_at")
+  runnerTemplate   RunnerTemplate @relation(fields: [runnerTemplateId], references: [id], onDelete: Restrict, map: "runner_template_revisions_runner_template_id_fkey")
   runnerStacks     RunnerStack[]
   operations       Operation[]
 
-  @@unique([runnerTemplateId, revision])
-  @@index([retiredAt])
+  @@unique([runnerTemplateId, revision], map: "runner_template_revisions_runner_template_id_revision_key")
+  @@index([retiredAt], map: "runner_template_revisions_retired_at_idx")
+  @@map("runner_template_revisions")
 }
 
 model Operation {
-  id                       String                 @id
+  id                       String                 @id(map: "operations_pkey")
   type                     OperationType
   state                    OperationState
-  actorId                  String
+  actorId                  String                 @map("actor_id")
   reason                   String
-  idempotencyKey           String                 @unique
-  correlationId            String                 @unique
-  gitlabProjectRefId       String
-  runnerTemplateRevisionId String
+  idempotencyKey           String                 @unique(map: "operations_idempotency_key_key") @map("idempotency_key")
+  correlationId            String                 @unique(map: "operations_correlation_id_key") @map("correlation_id")
+  gitlabProjectRefId       String                 @map("gitlab_project_ref_id")
+  runnerTemplateRevisionId String                 @map("runner_template_revision_id")
   parameters               Json
-  redactedOutcome          Json?
-  requestedAt              DateTime               @default(now())
-  updatedAt                DateTime               @updatedAt
-  availableAt              DateTime               @default(now())
-  leaseOwner               String?
-  leaseExpiresAt           DateTime?
-  attemptCount             Int                    @default(0)
-  completedAt              DateTime?
-  gitlabProjectRef         GitLabProjectRef       @relation(fields: [gitlabProjectRefId], references: [id], onDelete: Restrict)
-  runnerTemplateRevision   RunnerTemplateRevision @relation(fields: [runnerTemplateRevisionId], references: [id], onDelete: Restrict)
+  redactedOutcome          Json?                  @map("redacted_outcome")
+  requestedAt              DateTime               @default(now()) @map("requested_at")
+  updatedAt                DateTime               @updatedAt @map("updated_at")
+  availableAt              DateTime               @default(now()) @map("available_at")
+  leaseOwner               String?                @map("lease_owner")
+  leaseExpiresAt           DateTime?              @map("lease_expires_at")
+  attemptCount             Int                    @default(0) @map("attempt_count")
+  completedAt              DateTime?              @map("completed_at")
+  gitlabProjectRef         GitLabProjectRef       @relation(fields: [gitlabProjectRefId], references: [id], onDelete: Restrict, map: "operations_gitlab_project_ref_id_fkey")
+  runnerTemplateRevision   RunnerTemplateRevision @relation(fields: [runnerTemplateRevisionId], references: [id], onDelete: Restrict, map: "operations_runner_template_revision_id_fkey")
   events                   OperationEvent[]
 
-  @@index([state, availableAt])
-  @@index([gitlabProjectRefId])
-  @@index([runnerTemplateRevisionId])
+  @@index([state, availableAt], map: "operations_state_available_at_idx")
+  @@index([gitlabProjectRefId], map: "operations_gitlab_project_ref_id_idx")
+  @@index([runnerTemplateRevisionId], map: "operations_runner_template_revision_id_idx")
+  @@map("operations")
 }
 
 model OperationEvent {
-  id          String             @id
-  operationId String
+  id          String             @id(map: "operation_events_pkey")
+  operationId String             @map("operation_id")
   sequence    Int
   state       OperationState
   stage       ProvisioningStage?
-  eventType   String
+  eventType   String             @map("event_type")
   payload     Json
-  occurredAt  DateTime           @default(now())
-  operation   Operation          @relation(fields: [operationId], references: [id], onDelete: Restrict)
+  occurredAt  DateTime           @default(now()) @map("occurred_at")
+  operation   Operation          @relation(fields: [operationId], references: [id], onDelete: Restrict, map: "operation_events_operation_id_fkey")
 
-  @@unique([operationId, sequence])
-  @@index([occurredAt])
+  @@unique([operationId, sequence], map: "operation_events_operation_id_sequence_key")
+  @@index([occurredAt], map: "operation_events_occurred_at_idx")
+  @@map("operation_events")
 }
 
 model RunnerRecordRef {
-  id             String      @id @default(cuid())
-  runnerStackId  String      @unique
-  gitlabRunnerId String      @unique
-  projectPath    String
-  runnerStack    RunnerStack @relation(fields: [runnerStackId], references: [id], onDelete: Cascade)
+  id             String      @id(map: "runner_record_refs_pkey") @default(cuid())
+  runnerStackId  String      @unique(map: "runner_record_refs_runner_stack_id_key") @map("runner_stack_id")
+  gitlabRunnerId String      @unique(map: "runner_record_refs_gitlab_runner_id_key") @map("gitlab_runner_id")
+  projectPath    String      @map("project_path")
+  runnerStack    RunnerStack @relation(fields: [runnerStackId], references: [id], onDelete: Cascade, map: "runner_record_refs_runner_stack_id_fkey")
+
+  @@map("runner_record_refs")
 }
 
 model Observation {
-  id             String            @id @default(cuid())
-  runnerStackId  String
+  id             String            @id(map: "observations_pkey") @default(cuid())
+  runnerStackId  String            @map("runner_stack_id")
   source         ObservationSource
-  deliveryId     String?
-  deliveryDigest String?
-  schemaVersion  String
-  observedAt     DateTime
+  deliveryId     String?           @map("delivery_id")
+  deliveryDigest String?           @map("delivery_digest")
+  schemaVersion  String            @map("schema_version")
+  observedAt     DateTime          @map("observed_at")
   payload        Json
-  createdAt      DateTime          @default(now())
-  runnerStack    RunnerStack       @relation(fields: [runnerStackId], references: [id], onDelete: Cascade)
+  createdAt      DateTime          @default(now()) @map("created_at")
+  runnerStack    RunnerStack       @relation(fields: [runnerStackId], references: [id], onDelete: Cascade, map: "observations_runner_stack_id_fkey")
 
-  @@unique([runnerStackId, source, deliveryId])
-  @@index([runnerStackId, source, observedAt])
+  @@unique([runnerStackId, source, deliveryId], map: "observations_runner_stack_id_source_delivery_id_key")
+  @@index([runnerStackId, source, observedAt], map: "observations_runner_stack_id_source_observed_at_idx")
+  @@map("observations")
 }
 
 model AuditEvent {
-  id            String   @id @default(cuid())
-  correlationId String
-  actorId       String
-  eventType     String
-  targetType    String
-  targetId      String
+  id            String   @id(map: "audit_events_pkey") @default(cuid())
+  correlationId String   @map("correlation_id")
+  actorId       String   @map("actor_id")
+  eventType     String   @map("event_type")
+  targetType    String   @map("target_type")
+  targetId      String   @map("target_id")
   payload       Json
-  occurredAt    DateTime @default(now())
+  occurredAt    DateTime @default(now()) @map("occurred_at")
 
-  @@index([occurredAt])
-  @@index([correlationId])
+  @@index([occurredAt], map: "audit_events_occurred_at_idx")
+  @@index([correlationId], map: "audit_events_correlation_id_idx")
+  @@map("audit_events")
 }

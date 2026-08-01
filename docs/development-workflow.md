@@ -87,6 +87,9 @@ command.
 Roll out Host Agent and Control Plane changes canary-first. Their versioned
 contract must allow either side to be upgraded first. Database migrations must
 remain compatible with the previously deployed Control Plane during rollout.
+The base migration may be squashed only before its release and only with an
+explicit development database reset; all later changes use incremental
+migrations.
 
 ## Commits
 

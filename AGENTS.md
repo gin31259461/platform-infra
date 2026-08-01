@@ -153,6 +153,17 @@ for explicit same-host staging on literal `127.0.0.1` or `::1`.
 - Preserve unknown values; do not invent zero jobs, empty Drift, or a version.
 - Preserve restrictive ownership and modes during atomic writes.
 
+### Prisma and PostgreSQL
+
+- Keep Prisma models and fields idiomatic TypeScript; map every physical
+  PostgreSQL table, column, enum, index, and constraint to snake_case.
+- Physical table names are plural. Use explicit `@map`, `@@map`, and mapped
+  constraint names so generated migrations remain stable.
+- The checked-in base migration is the complete empty-database schema and
+  includes approved Runner Template seed rows. Add incremental migrations
+  after the base; never rewrite an already released migration.
+- Validate schema drift with `prisma migrate diff` after migration changes.
+
 ### Runner policy
 
 - Stack names match `^[a-z0-9][a-z0-9-]*/[a-z0-9][a-z0-9-]*$`.

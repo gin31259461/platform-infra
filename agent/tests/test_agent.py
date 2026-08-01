@@ -255,6 +255,62 @@ class ObservationTests(unittest.TestCase):
             self.assertEqual(collector.call_count, 1)
             self.assertFalse(paths.pending_file.exists())
 
+    def test_discards_a_pending_delivery_for_a_previous_identity(self):
+        with tempfile.TemporaryDirectory() as directory:
+            home = Path(directory)
+            config_directory = home / ".config/gitlab-runner-platform"
+            config_directory.mkdir(parents=True)
+            config_file = config_directory / "agent.json"
+            config_file.write_text(json.dumps(VALID_CONFIG), encoding="utf-8")
+            config_file.chmod(0o600)
+            credential_file = config_directory / "credential"
+            credential_file.write_text(SECRET, encoding="utf-8")
+            credential_file.chmod(0o600)
+            paths = AgentPaths(home)
+            previous_config = parse_config({
+                **VALID_CONFIG,
+                "hostId": "previous-host",
+                "stack": {**VALID_CONFIG["stack"], "id": "previous-stack"},
+            })
+            previous_observation = collect_observation(
+                previous_config,
+                paths,
+                dt.datetime(2026, 7, 31, 9, 0, tzinfo=dt.timezone.utc),
+                safe_checks(),
+            )
+            paths.state_directory.mkdir(mode=0o700, parents=True)
+            paths.pending_file.write_text(json.dumps(previous_observation), encoding="utf-8")
+            paths.pending_file.chmod(0o600)
+            delivered = []
+
+            def accept_current_identity(config, _secret, observation):
+                if (
+                    observation["hostId"] != config.host_id
+                    or observation["stacks"][0]["id"] != config.stack.id
+                ):
+                    raise AgentError("Observation delivery failed")
+                delivered.append(observation)
+                return "accepted"
+
+            result = run_once(
+                paths,
+                now=lambda: dt.datetime(2026, 7, 31, 10, 0, tzinfo=dt.timezone.utc),
+                refresher=lambda _config, _secret: (True, "missing"),
+                sender=accept_current_identity,
+                collector=lambda config, agent_paths, now: collect_observation(
+                    config,
+                    agent_paths,
+                    now,
+                    safe_checks(),
+                ),
+            )
+
+            self.assertEqual(result, "accepted")
+            self.assertEqual(len(delivered), 1)
+            self.assertEqual(delivered[0]["hostId"], VALID_CONFIG["hostId"])
+            self.assertEqual(delivered[0]["stacks"][0]["id"], VALID_CONFIG["stack"]["id"])
+            self.assertFalse(paths.pending_file.exists())
+
     def test_collects_fresh_health_when_the_server_requests_startup_refresh(self):
         with tempfile.TemporaryDirectory() as directory:
             home = Path(directory)
