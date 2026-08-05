@@ -1,0 +1,45 @@
+---
+- name: Require configured VPN interface
+  ansible.builtin.assert:
+    that:
+      - network.vpn_interface in ansible_facts.interfaces
+    fail_msg: >-
+      VPN interface {{ network.vpn_interface }} is missing. Connect the VPN first.
+
+- name: Resolve GitLab hostname
+  ansible.builtin.getent:
+    database: ahosts
+    key: "{{ gitlab.hostname }}"
+
+- name: Check GitLab HTTPS health endpoint with public trust
+  ansible.builtin.uri:
+    url: "{{ gitlab.health_url }}"
+    method: GET
+    status_code: 200
+    validate_certs: true
+    timeout: 15
+  when: not tls.private_ca_enabled | bool
+
+- name: Check GitLab HTTPS port before private CA installation
+  ansible.builtin.wait_for:
+    host: "{{ gitlab.hostname }}"
+    port: 443
+    state: started
+    timeout: 15
+  when: tls.private_ca_enabled | bool
+
+- name: Validate private CA source before installation
+  delegate_to: localhost
+  become: false
+  ansible.builtin.stat:
+    path: "{{ tls.private_ca_source }}"
+  register: precheck_private_ca_source
+  when: tls.private_ca_enabled | bool
+
+- name: Require private CA source before installation
+  ansible.builtin.assert:
+    that:
+      - precheck_private_ca_source.stat.exists
+      - precheck_private_ca_source.stat.isreg
+      - precheck_private_ca_source.stat.readable
+  when: tls.private_ca_enabled | bool

@@ -1,0 +1,190 @@
+---
+- name: Create Runner manager directories
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: directory
+    owner: "{{ runner_account_user }}"
+    group: "{{ runner_account_user }}"
+    mode: "{{ item.mode }}"
+  loop:
+    - path: "{{ runner_config_dir }}"
+      mode: "0700"
+    - path: "{{ runner_certificate_dir }}"
+      mode: "0700"
+    - path: "{{ runner_cache_dir }}"
+      mode: "0700"
+    - path: "{{ runner_systemd_unit_dir }}"
+      mode: "0700"
+
+- name: Install private CA for the Runner manager
+  ansible.builtin.copy:
+    src: "{{ tls.private_ca_source }}"
+    dest: "{{ runner_certificate_file }}"
+    owner: "{{ runner_account_user }}"
+    group: "{{ runner_account_user }}"
+    mode: "0600"
+  when: tls.private_ca_enabled | bool
+  notify: Restart Runner manager
+
+- name: Remove obsolete Runner manager private CA
+  ansible.builtin.file:
+    path: "{{ runner_certificate_file }}"
+    state: absent
+  when: not tls.private_ca_enabled | bool
+  notify: Restart Runner manager
+
+- name: Install non-secret Runner registration template
+  ansible.builtin.template:
+    src: registration-template.toml.j2
+    dest: "{{ runner_registration_template_file }}"
+    owner: "{{ runner_account_user }}"
+    group: "{{ runner_account_user }}"
+    mode: "0600"
+
+- name: Inspect existing Runner configuration
+  ansible.builtin.stat:
+    path: "{{ runner_config_file }}"
+  register: existing_runner_config_file
+
+- name: Read existing Runner configuration
+  ansible.builtin.slurp:
+    src: "{{ runner_config_file }}"
+  register: existing_runner_config
+  when: existing_runner_config_file.stat.exists
+  no_log: true
+
+- name: Count existing Runner registrations
+  ansible.builtin.set_fact:
+    runner_existing_registration_count: >-
+      {{
+        (
+          existing_runner_config.content | b64decode |
+          regex_findall('(?m)^\s*\[\[runners\]\]\s*$') | length
+        )
+        if existing_runner_config_file.stat.exists
+        else 0
+      }}
+  no_log: true
+
+- name: Require one registration per dedicated stack
+  ansible.builtin.assert:
+    that:
+      - runner_existing_registration_count | int <= 1
+    fail_msg: >-
+      The dedicated Runner stack contains multiple registrations.
+      Split them into separate Linux accounts before continuing.
+
+- name: Extract existing Runner registration metadata
+  ansible.builtin.set_fact:
+    runner_existing_id: >-
+      {{
+        (
+          existing_runner_config.content | b64decode |
+          regex_search('(?m)^\\s*id\\s*=\\s*([^\\n]+)', '\\1') |
+          default([], true) | first | default('')
+        )
+        if existing_runner_config_file.stat.exists
+        else ''
+      }}
+    runner_existing_token: >-
+      {{
+        (
+          existing_runner_config.content | b64decode |
+          regex_search('(?m)^\\s*token\\s*=\\s*"([^"]+)"', '\\1') |
+          default([], true) | first | default('')
+        )
+        if existing_runner_config_file.stat.exists
+        else ''
+      }}
+    runner_existing_token_obtained_at: >-
+      {{
+        (
+          existing_runner_config.content | b64decode |
+          regex_search('(?m)^\\s*token_obtained_at\\s*=\\s*([^\\n]+)', '\\1') |
+          default([], true) | first | default('')
+        )
+        if existing_runner_config_file.stat.exists
+        else ''
+      }}
+    runner_existing_token_expires_at: >-
+      {{
+        (
+          existing_runner_config.content | b64decode |
+          regex_search('(?m)^\\s*token_expires_at\\s*=\\s*([^\\n]+)', '\\1') |
+          default([], true) | first | default('')
+        )
+        if existing_runner_config_file.stat.exists
+        else ''
+      }}
+  no_log: true
+
+- name: Render unregistered Runner configuration
+  ansible.builtin.template:
+    src: config.base.toml.j2
+    dest: "{{ runner_config_file }}"
+    owner: "{{ runner_account_user }}"
+    group: "{{ runner_account_user }}"
+    mode: "0600"
+  when: runner_existing_token | length == 0
+  notify: Restart Runner manager
+
+- name: Reconcile registered Runner configuration
+  ansible.builtin.template:
+    src: config.registered.toml.j2
+    dest: "{{ runner_config_file }}"
+    owner: "{{ runner_account_user }}"
+    group: "{{ runner_account_user }}"
+    mode: "0600"
+  when: runner_existing_token | length > 0
+  notify: Restart Runner manager
+  no_log: true
+
+- name: Check whether the Runner manager image exists
+  become: true
+  become_user: "{{ runner_account_user }}"
+  environment: "{{ runner_systemd_environment }}"
+  ansible.builtin.command:
+    argv:
+      - podman
+      - image
+      - exists
+      - "{{ runner_manager_image }}"
+  register: runner_manager_image_exists
+  changed_when: false
+  failed_when: runner_manager_image_exists.rc not in [0, 1]
+
+- name: Pull the Runner manager image
+  become: true
+  become_user: "{{ runner_account_user }}"
+  environment: "{{ runner_systemd_environment }}"
+  ansible.builtin.command:
+    argv:
+      - podman
+      - pull
+      - "{{ runner_manager_image }}"
+  when: runner_manager_image_exists.rc == 1
+  changed_when: true
+
+- name: Install Runner manager systemd user service
+  ansible.builtin.template:
+    src: runner.service.j2
+    dest: "{{ runner_systemd_unit_file }}"
+    owner: "{{ runner_account_user }}"
+    group: "{{ runner_account_user }}"
+    mode: "0600"
+  notify:
+    - Reload Runner user systemd
+    - Restart Runner manager
+
+- name: Flush Runner manager handlers
+  ansible.builtin.meta: flush_handlers
+
+- name: Enable and start Runner manager
+  become: true
+  become_user: "{{ runner_account_user }}"
+  environment: "{{ runner_systemd_environment }}"
+  ansible.builtin.systemd_service:
+    name: "{{ runner.service_name }}.service"
+    scope: user
+    enabled: true
+    state: started

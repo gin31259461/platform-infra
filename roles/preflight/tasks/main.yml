@@ -1,0 +1,55 @@
+---
+- name: Validate Ansible version
+  ansible.builtin.assert:
+    that:
+      - ansible_version.full is version('2.18.0', '>=')
+    fail_msg: Ansible Core 2.18 or newer is required.
+
+- name: Validate supported service manager
+  ansible.builtin.assert:
+    that:
+      - ansible_facts.service_mgr == "systemd"
+    fail_msg: This project requires systemd.
+
+- name: Validate supported distribution family
+  ansible.builtin.assert:
+    that:
+      - >-
+        ansible_facts.distribution == "Archlinux" or
+        ansible_facts.os_family in ["Debian", "RedHat"]
+    fail_msg: >-
+      Supported distributions are Arch Linux, Debian/Ubuntu, and
+      Fedora/RHEL/Rocky/AlmaLinux.
+
+- name: Check cgroup v2 controllers
+  ansible.builtin.stat:
+    path: /sys/fs/cgroup/cgroup.controllers
+  register: cgroup_v2_controllers
+
+- name: Require cgroup v2
+  ansible.builtin.assert:
+    that:
+      - cgroup_v2_controllers.stat.exists
+    fail_msg: Rootless Podman Runner hosts require cgroup v2.
+
+- name: Define normalized Runner runtime values
+  ansible.builtin.set_fact:
+    runner_account_user: "{{ runner.user }}"
+    runner_account_home: "{{ runner.home }}"
+    runner_subuid_start: "{{ runner.subuid_start | int }}"
+    runner_subgid_start: "{{ runner.subgid_start | int }}"
+    runner_subordinate_id_count: "{{ runner.subordinate_id_count | int }}"
+    runner_manager_image: "{{ runner.image }}"
+
+- name: Validate stack security and portability invariants
+  ansible.builtin.assert:
+    that:
+      - stack.type == "gitlab-runner"
+      - runner.concurrent | int == 1
+      - not runner.privileged | bool
+      - network.use_host_network_for_runner_manager | bool
+      - runner_account_home is match('^/\S+$')
+      - runner_subuid_start | int > 0
+      - runner_subgid_start | int > 0
+      - runner_subordinate_id_count | int >= 65536
+    fail_msg: Stack configuration violates a required security invariant.

@@ -1,0 +1,31 @@
+---
+- name: Persist Podman network kernel modules
+  ansible.builtin.copy:
+    dest: /etc/modules-load.d/platform-infra-podman.conf
+    content: |
+      bridge
+      br_netfilter
+      veth
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Load Podman network kernel modules
+  community.general.modprobe:
+    name: "{{ item }}"
+    state: present
+  loop:
+    - bridge
+    - br_netfilter
+    - veth
+
+- name: Configure bridge packet filtering
+  ansible.posix.sysctl:
+    name: "{{ item }}"
+    value: "1"
+    state: present
+    sysctl_file: /etc/sysctl.d/90-platform-infra-podman.conf
+    reload: true
+  loop:
+    - net.ipv4.ip_forward
+    - net.bridge.bridge-nf-call-iptables

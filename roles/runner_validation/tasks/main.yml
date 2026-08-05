@@ -1,0 +1,178 @@
+---
+- name: Wait for GitLab HTTPS health endpoint
+  ansible.builtin.uri:
+    url: "{{ gitlab.health_url }}"
+    method: GET
+    status_code: 200
+    validate_certs: true
+    timeout: 15
+  register: gitlab_health
+  retries: 4
+  delay: 5
+  until: gitlab_health.status == 200
+
+- name: Require configured VPN interface
+  ansible.builtin.assert:
+    that:
+      - network.vpn_interface in ansible_facts.interfaces
+    fail_msg: >-
+      VPN interface {{ network.vpn_interface }} is missing. Connect the VPN first.
+
+- name: Check rootless Podman socket
+  ansible.builtin.stat:
+    path: "{{ runner_podman_socket }}"
+  register: verified_podman_socket
+
+- name: Require rootless Podman socket
+  ansible.builtin.assert:
+    that:
+      - verified_podman_socket.stat.exists
+      - verified_podman_socket.stat.issock
+
+- name: Check Runner manager user service
+  become: true
+  become_user: "{{ runner_account_user }}"
+  environment: "{{ runner_systemd_environment }}"
+  ansible.builtin.command:
+    argv:
+      - systemctl
+      - --user
+      - is-active
+      - "{{ runner.service_name }}.service"
+  register: runner_service_active
+  changed_when: false
+
+- name: Inspect Runner manager container state
+  become: true
+  become_user: "{{ runner_account_user }}"
+  environment: "{{ runner_systemd_environment }}"
+  ansible.builtin.command:
+    argv:
+      - podman
+      - inspect
+      - --format
+      - "{{ '{{.State.Running}} {{.HostConfig.NetworkMode}} {{.HostConfig.Privileged}}' }}"
+      - "{{ runner.service_name }}"
+  register: runner_container_state
+  changed_when: false
+
+- name: Require secure Runner manager container state
+  ansible.builtin.assert:
+    that:
+      - runner_container_state.stdout | trim == "true host false"
+    fail_msg: Runner manager must be running, unprivileged, and on the host network.
+
+- name: Lint Runner configuration
+  become: true
+  become_user: "{{ runner_account_user }}"
+  environment: "{{ runner_systemd_environment }}"
+  ansible.builtin.command:
+    argv:
+      - podman
+      - exec
+      - "{{ runner.service_name }}"
+      - gitlab-runner
+      - lint
+      - --config
+      - /etc/gitlab-runner/config.toml
+  changed_when: false
+
+- name: List registered Runners
+  become: true
+  become_user: "{{ runner_account_user }}"
+  environment: "{{ runner_systemd_environment }}"
+  ansible.builtin.command:
+    argv:
+      - podman
+      - exec
+      - "{{ runner.service_name }}"
+      - gitlab-runner
+      - list
+  register: runner_registration_list
+  changed_when: false
+  no_log: true
+
+- name: Verify registered Runner connectivity
+  become: true
+  become_user: "{{ runner_account_user }}"
+  environment: "{{ runner_systemd_environment }}"
+  ansible.builtin.command:
+    argv:
+      - podman
+      - exec
+      - "{{ runner.service_name }}"
+      - gitlab-runner
+      - verify
+  when: >-
+    'Executor=' in runner_registration_list.stderr or
+    'Executor=' in runner_registration_list.stdout
+  changed_when: false
+  no_log: true
+
+- name: Define temporary job-network validation values
+  ansible.builtin.set_fact:
+    runner_validation_network: >-
+      platform-infra-validation-{{ stack.id }}-{{ ansible_date_time.epoch }}
+    runner_validation_command: >-
+      {{
+        [
+          'podman', 'run', '--rm', '--pull=missing',
+          '--network', 'platform-infra-validation-' ~ stack.id ~ '-' ~ ansible_date_time.epoch
+        ]
+        + (['--dns', network.vpn_dns] if network.vpn_dns | length > 0 else [])
+        + (
+          [
+            '--volume', runner_certificate_file ~ ':/tmp/platform-infra-ca.crt:ro,Z'
+          ]
+          if tls.private_ca_enabled | bool
+          else []
+        )
+        + [
+          network.validation_image,
+          '--fail', '--silent', '--show-error',
+          '--connect-timeout', '10', '--max-time', '30'
+        ]
+        + (
+          ['--cacert', '/tmp/platform-infra-ca.crt']
+          if tls.private_ca_enabled | bool
+          else []
+        )
+        + [gitlab.health_url]
+      }}
+
+- name: Validate job-like rootless Podman networking
+  block:
+    - name: Create temporary job network
+      become: true
+      become_user: "{{ runner_account_user }}"
+      environment: "{{ runner_systemd_environment }}"
+      ansible.builtin.command:
+        argv:
+          - podman
+          - network
+          - create
+          - "{{ runner_validation_network }}"
+      changed_when: false
+
+    - name: Reach GitLab from an isolated validation container
+      become: true
+      become_user: "{{ runner_account_user }}"
+      environment: "{{ runner_systemd_environment }}"
+      ansible.builtin.command:
+        argv: "{{ runner_validation_command }}"
+      changed_when: false
+  always:
+    - name: Remove temporary job network
+      become: true
+      become_user: "{{ runner_account_user }}"
+      environment: "{{ runner_systemd_environment }}"
+      ansible.builtin.command:
+        argv:
+          - podman
+          - network
+          - rm
+          - --force
+          - "{{ runner_validation_network }}"
+      changed_when: false
+      register: removed_validation_network
+      failed_when: removed_validation_network.rc not in [0, 1, 125]

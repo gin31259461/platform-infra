@@ -1,290 +1,244 @@
 # platform-infra
 
-Infrastructure automation for project-scoped GitLab Runners on self-managed
-Arch Linux hosts.
+Python and Ansible automation for isolated GitLab Runner hosts backed by
+rootless Podman.
 
-The frontend and .NET stacks run both the GitLab Runner manager and their CI
-jobs with rootless Podman. They are designed for GitLab instances reachable
-through a manually managed VPN, with explicit DNS handling for reliable
-recovery after a host reboot.
+Each stack owns one Linux account, one rootless Podman API socket, one Runner
+manager container, one registration, and one cache directory. The Runner
+manager receives the Podman socket. CI job containers do not receive it.
 
-## What it provides
+## Supported managed hosts
 
-- One dedicated Linux user and rootless Podman socket per Runner stack
-- A Quadlet-managed GitLab Runner manager with systemd user lingering
-- Docker executor compatibility through the Podman API socket
-- Per-build job networks with no runtime socket exposed to CI jobs
-- Dedicated frontend and .NET workload stacks with separate trust boundaries
-- Configurable .NET SDK/runtime images, SQL Server service, and NuGet sources
-- Explicit VPN DNS for both the manager and job containers
-- Optional private-CA installation without disabling TLS verification
-- Idempotent Ansible installation, local verification, and safe uninstall
-- Pinned container images and narrow job/service image allowlists
+The managed host must provide:
 
-> [!IMPORTANT]
-> This repository does not install or configure the VPN and does not create,
-> pause, delete, or otherwise manage GitLab Runner records through the GitLab
-> API. Those operations remain manual.
+- systemd with user services and lingering
+- cgroup v2
+- rootless Podman 4.2 or newer
+- aardvark-dns newer than 1.10.0
+- subordinate UID and GID mappings
+- SSH and Python for remote Ansible management
+
+The Ansible roles support these package families:
+
+- Arch Linux
+- Debian and Ubuntu
+- Fedora, RHEL, Rocky Linux, and AlmaLinux
+
+The roles intentionally reject Alpine, Void, and other non-systemd systems.
+Those platforms require a different service lifecycle, not only different
+package names.
+
+See `docs/DISTRIBUTIONS.md` for package and version caveats.
 
 ## Architecture
 
 ```text
-GitLab over VPN
-      ^
-      | outbound HTTPS polling
-      |
-Arch Linux host
-  `-- dedicated runner user
-      |-- systemd user manager + lingering
-      |-- rootless podman.socket
-      `-- GitLab Runner manager (Quadlet, host network)
-          |-- explicit VPN DNS when configured
-          |-- Podman socket mounted at /run/podman/podman.sock
-          `-- isolated CI job containers
-              |-- per-build network
-              |-- /cache volume only
-              `-- no host network or Podman socket
+bootstrap.py
+  -> pinned uv project environment
+      -> typed Python CLI
+          -> configuration validation and process orchestration
+          -> Ansible playbooks
+              -> packages, users, systemd, rootless Podman, TLS, Runner state
 ```
 
-GitLab Runner speaks the Docker executor protocol to the rootless Podman
-socket. The manager receives that socket; job containers never do. See
-[Architecture](docs/architecture.md) and [Security](docs/security.md) for the
-full trust-boundary description.
+Python does not reimplement package management or service convergence.
+Ansible owns persistent host state. Python owns stack parsing, validation,
+command composition, token input, and application-level workflows.
 
-## Requirements
+See `docs/ARCHITECTURE.md` for layer boundaries and secret flow.
 
-- Arch Linux with cgroup v2
-- A user with sudo access
-- A configured VPN that can reach the GitLab server
-- GitLab hostname resolution and a trusted HTTPS endpoint returning `200`
-- A manually created, project-scoped GitLab Runner
+## Bootstrap the control node
 
-Configure the GitLab Runner with:
-
-- Tags: `frontend`, `podman` for the frontend stack, or `dotnet`, `podman`
-  for the .NET stack
-- Run untagged jobs: disabled
-- Lock to current project: enabled
-- Protected status: according to the project's release policy
-
-If `https://<gitlab-hostname>/-/health` is unavailable, set `gitlab.health_url`
-to another stable, unauthenticated HTTPS endpoint on that server that returns
-`200`.
-
-## Quick start
-
-The steps below use the frontend stack. For .NET, use
-`STACK=gitlab-runners/dotnet` and follow the
-[.NET stack README](stacks/gitlab-runners/dotnet/README.md) for its SDK,
-runtime, SQL Server, and NuGet configuration.
-
-The .NET project path, tool versions, SQL Server version, and NuGet sources
-are project-level settings owned by the consuming `.gitlab-ci.yml`; they are
-not duplicated in the Runner's `config.yml`.
-
-Frontend package names, Node and Playwright versions, and pnpm versions follow
-the same rule and are owned by the frontend project's `.gitlab-ci.yml`.
-
-### 1. Create the local stack configuration
+Run the standard-library-only bootstrap from the repository root:
 
 ```bash
-cp stacks/gitlab-runners/frontend/config.example.yml \
+python3 bootstrap.py
+```
+
+The bootstrap:
+
+1. Detects an Arch, Debian, or RedHat-family control node.
+2. Installs the minimum native Python and Git packages.
+3. Creates `.bootstrap-venv`.
+4. Installs the pinned `uv` version in that isolated environment.
+5. Generates `uv.lock` when it is missing or stale.
+6. Syncs `.venv` from the lockfile.
+7. Installs pinned Ansible collections under `.ansible/collections`.
+
+Commit the generated `uv.lock`. Do not commit `.venv`, `.bootstrap-venv`, or
+`.ansible/collections`.
+
+## Configure a stack
+
+```bash
+cp \
+  stacks/gitlab-runners/frontend/config.example.yml \
   stacks/gitlab-runners/frontend/config.yml
+
 $EDITOR stacks/gitlab-runners/frontend/config.yml
 ```
 
-Replace every `REPLACE_*` value. The local `config.yml` is ignored by Git.
+Local `config.yml` files and public CA certificate files are ignored by Git.
+Tokens, passwords, private keys, and secret-like fields are rejected from stack
+YAML.
 
-When the VPN replaces the host resolver during startup, set
-`network.vpn_dns` to the VPN DNS server's IP address. For this host's
-Tailscale setup:
+Validate one stack:
+
+```bash
+uv run --locked platform-infra validate \
+  --stack gitlab-runners/frontend
+```
+
+Validate every local stack, or its committed example when no local config
+exists:
+
+```bash
+uv run --locked platform-infra validate-all
+```
+
+## Inventory
+
+Local host:
+
+```bash
+uv run --locked platform-infra install \
+  --stack gitlab-runners/frontend \
+  --inventory inventory/localhost.yml
+```
+
+Remote host:
+
+```bash
+cp inventory/hosts.example.yml inventory/hosts.yml
+$EDITOR inventory/hosts.yml
+
+uv run --locked platform-infra install \
+  --stack gitlab-runners/frontend \
+  --inventory inventory/hosts.yml
+```
+
+Use `--no-ask-become-pass` when passwordless sudo is already configured.
+
+## Deployment workflow
+
+Check network prerequisites without changing the host:
+
+```bash
+uv run --locked platform-infra check \
+  --stack gitlab-runners/frontend \
+  --inventory inventory/hosts.yml
+```
+
+Converge the host:
+
+```bash
+uv run --locked platform-infra install \
+  --stack gitlab-runners/frontend \
+  --inventory inventory/hosts.yml
+```
+
+Create a GitLab Runner authentication token in GitLab, then register it:
+
+```bash
+export GITLAB_RUNNER_TOKEN='glrt-...'
+
+uv run --locked platform-infra register \
+  --stack gitlab-runners/frontend \
+  --inventory inventory/hosts.yml
+
+unset GITLAB_RUNNER_TOKEN
+```
+
+The token is supplied to the local `ansible-playbook` process through an
+environment variable. It is not written to inventory, stack YAML, generated
+extra-vars, or command arguments. The Ansible registration task uses `no_log`
+and injects the token into the remote registration process environment.
+
+Runner tags, protection, lock status, and run-untagged policy are server-side
+Runner attributes. Configure them when creating the Runner in the GitLab UI or
+API before copying its authentication token. The `runner.tags` field documents
+and validates the intended assignment; registration does not mutate GitLab
+server-side attributes.
+
+Verify and inspect:
+
+```bash
+uv run --locked platform-infra verify \
+  --stack gitlab-runners/frontend \
+  --inventory inventory/hosts.yml
+
+uv run --locked platform-infra status \
+  --stack gitlab-runners/frontend \
+  --inventory inventory/hosts.yml
+
+uv run --locked platform-infra idempotency \
+  --stack gitlab-runners/frontend \
+  --inventory inventory/hosts.yml
+```
+
+Remove only the manager service and CA material:
+
+```bash
+uv run --locked platform-infra uninstall \
+  --stack gitlab-runners/frontend \
+  --inventory inventory/hosts.yml \
+  --yes
+```
+
+Purge the account, home, cache, rootless socket, and registration files:
+
+```bash
+uv run --locked platform-infra uninstall \
+  --stack gitlab-runners/frontend \
+  --inventory inventory/hosts.yml \
+  --purge \
+  --yes
+```
+
+## Arch Linux updates
+
+The package role never performs a partial Arch Linux repository refresh.
+Normal convergence installs packages from the existing package database.
+During an explicit maintenance window, enable a full system upgrade in
+inventory:
 
 ```yaml
-network:
-  vpn_interface: tailscale0
-  vpn_dns: "100.100.100.100"
-  use_host_network_for_runner_manager: true
+all:
+  children:
+    runner_hosts:
+      vars:
+        runner_update_operating_system: true
 ```
 
-The resolver is applied to both the Runner manager and CI job containers.
+After the maintenance run, set it back to `false`.
 
-### 2. Bootstrap and reboot
+## Quality gates
+
+All Python tooling is configured in `pyproject.toml`.
 
 ```bash
-make bootstrap
-sudo reboot
+uv lock --check
+uv run --locked ruff format --check .
+uv run --locked ruff check .
+uv run --locked mypy --strict src tests bootstrap.py
+uv run --locked pytest
+uv run --locked yamllint .
+uv run --locked ansible-lint
+uv run --locked platform-infra validate-all
 ```
 
-> [!WARNING]
-> Bootstrap performs a full Arch Linux package upgrade. Reboot afterward so
-> the running kernel matches the installed module tree.
+These commands are mandatory in GitLab CI.
 
-After reboot, reconnect the VPN before continuing.
+## Security invariants
 
-### 3. Check and install
-
-```bash
-cd /path/to/platform-infra
-
-make check STACK=gitlab-runners/frontend
-make install STACK=gitlab-runners/frontend
-```
-
-`make check` is read-only. `make install` requests the sudo become password in
-an interactive terminal, then:
-
-- installs the rootless Podman packages;
-- persists and loads `bridge`, `veth`, and `br_netfilter`;
-- creates the dedicated Runner user and subordinate ID ranges;
-- enables systemd lingering and the rootless Podman socket;
-- validates VPN, DNS, HTTPS, and Podman networking;
-- installs and starts the Runner manager Quadlet.
-
-### 4. Register the Runner
-
-Create the Project Runner in GitLab first, then copy its `glrt-...`
-authentication token.
-
-For zsh:
-
-```zsh
-read -rs "GITLAB_RUNNER_TOKEN?GitLab Runner token: "
-echo
-export GITLAB_RUNNER_TOKEN
-make register STACK=gitlab-runners/frontend
-unset GITLAB_RUNNER_TOKEN
-```
-
-For Bash:
-
-```bash
-read -rsp "GitLab Runner token: " GITLAB_RUNNER_TOKEN
-echo
-export GITLAB_RUNNER_TOKEN
-make register STACK=gitlab-runners/frontend
-unset GITLAB_RUNNER_TOKEN
-```
-
-Registration streams the token to the Runner process. It does not place the
-token in command arguments, logs, temporary files, or the repository.
-
-### 5. Verify
-
-```bash
-make verify STACK=gitlab-runners/frontend
-make status STACK=gitlab-runners/frontend
-```
-
-Then run the minimal
-[smoke pipeline](stacks/gitlab-runners/frontend/tests/smoke.gitlab-ci.yml)
-before adopting the complete
-[frontend CI example](stacks/gitlab-runners/frontend/examples/frontend.gitlab-ci.yml).
-
-## Configuration
-
-The stack configuration is grouped by responsibility:
-
-| Section | Purpose |
-| --- | --- |
-| `stack` | Stack type, identifier, and description |
-| `gitlab` | GitLab URL, hostname, and HTTPS health endpoint |
-| `runner` | Identity, resource limits, image, tags, and job/service allowlists |
-| `network` | VPN, diagnostic container image, DNS, and manager network mode |
-| `tls` | Optional public private-CA certificate source |
-
-Important invariants enforced by validation:
-
-- `runner.concurrent` is `1`.
-- `runner.privileged` is `false`.
-- The manager uses host networking; jobs do not.
-- Fixed images are registry-qualified and pinned.
-- Job images must match the configured allowlist.
-- Network diagnostics use a pinned `docker.io/curlimages/curl` image.
-- .NET service images are limited to the SQL Server allowlist.
-- `network.vpn_dns`, when set, must be an IP address.
-- Runner users cannot be shared by configured stacks.
-- Secrets and private keys are rejected from stack configuration.
-
-After changing `network.vpn_dns`, run `make install` again. Installation
-reconciles the existing token-bearing `config.toml` without exposing or
-replacing its token.
-
-## Commands
-
-All stack commands require a canonical name such as
-`STACK=gitlab-runners/frontend`.
-
-| Command | Purpose |
-| --- | --- |
-| `make help` | Show available targets |
-| `make bootstrap` | Upgrade Arch packages and install Ansible dependencies |
-| `make validate STACK=...` | Validate one stack and run Ansible syntax check |
-| `make validate-all` | Validate every discovered stack and regression test |
-| `make check STACK=...` | Run live, read-only host preflight checks |
-| `make install STACK=...` | Reconcile the host and Runner manager |
-| `make register STACK=...` | Register once using `GITLAB_RUNNER_TOKEN` |
-| `make verify STACK=...` | Verify network, Podman, service, config, and Runner |
-| `make status STACK=...` | Print concise operational status and log command |
-| `make idempotency STACK=...` | Install twice and require zero second-run changes |
-| `make uninstall STACK=...` | Stop the stack while preserving config and cache |
-| `make lint` | Run ShellCheck, yamllint, ansible-lint, and secret scans |
-
-## Uninstall and recovery
-
-Normal uninstall preserves the Runner configuration, token, cache, and
-rootless container storage:
-
-```bash
-make uninstall STACK=gitlab-runners/frontend
-```
-
-Purge permanently removes the dedicated local user and its data:
-
-```bash
-./scripts/uninstall.sh gitlab-runners/frontend --purge
-```
-
-> [!CAUTION]
-> Purge requires typing the exact stack-specific confirmation and cannot be
-> recovered by this repository. It still does not delete the Runner record
-> from GitLab.
-
-For restart, migration, and failure recovery, see:
-
-- [Troubleshooting](docs/troubleshooting.md)
-- [Migration](docs/migration.md)
-- [Rollback](docs/rollback.md)
-
-## Development
-
-The repository uses Bash, Python, YAML, Jinja, Ansible, systemd user services,
-Quadlet, and rootless Podman.
-
-Run the non-destructive checks before committing:
-
-```bash
-make validate-all
-make lint
-```
-
-`make lint` requires `shellcheck`, `yamllint`, `ansible-lint`, and `rg`.
-GitLab CI installs its pinned tool versions before running the same checks.
-Live installation and verification require the supported Arch Linux host,
-active VPN, and sudo access.
-
-## Repository layout
-
-```text
-.
-|-- playbooks/                 # Stack orchestration
-|-- roles/common/              # Host, Podman, network, TLS, and systemd roles
-|-- roles/gitlab_runner/       # Runner user, manager, and validation roles
-|-- stacks/gitlab-runners/     # Workload-specific configuration and CI examples
-|-- scripts/                   # Make target implementations and shared helpers
-|-- tests/                     # Schema, lint, regression, and live verification
-|-- inventory/localhost.yml    # Local Ansible inventory
-`-- docs/                      # Architecture and operational guides
-```
-
-To extend the repository, start with [Adding a stack](docs/adding-a-stack.md)
-or [Adding a Runner stack](docs/adding-a-runner-stack.md).
+- One dedicated Linux account and rootless Podman socket per stack.
+- The manager container receives the Podman socket; CI jobs do not.
+- `runner.privileged` must remain `false`.
+- `runner.concurrent` must remain `1` for one-stack-per-account isolation.
+- The manager uses host networking for VPN reachability.
+- Jobs use per-build networks through `FF_NETWORK_PER_BUILD=1`.
+- Image allowlists are required.
+- Images must be registry-qualified and cannot use the `latest` tag.
+- Private CA support installs only public certificates.
+- TLS certificate verification is never disabled.
+- Runner authentication tokens are accepted only at the registration boundary.

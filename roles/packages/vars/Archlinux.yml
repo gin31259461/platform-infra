@@ -1,0 +1,18 @@
+---
+runner_host_packages:
+  - aardvark-dns
+  - ca-certificates
+  - ca-certificates-utils
+  - curl
+  - dbus
+  - fuse-overlayfs
+  - iproute
+  - netavark
+  - podman
+  - procps-ng
+  - shadow
+  - slirp4netns
+runner_ca_anchor_directory: /etc/ca-certificates/trust-source/anchors
+runner_ca_update_command:
+  - trust
+  - extract-compat

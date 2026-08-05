@@ -1,0 +1,16 @@
+---
+runner_host_packages:
+  - aardvark-dns
+  - ca-certificates
+  - curl
+  - dbus-user-session
+  - fuse-overlayfs
+  - iproute2
+  - netavark
+  - podman
+  - procps
+  - slirp4netns
+  - uidmap
+runner_ca_anchor_directory: /usr/local/share/ca-certificates
+runner_ca_update_command:
+  - update-ca-certificates

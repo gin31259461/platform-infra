@@ -1,0 +1,83 @@
+---
+- name: Enable the rootless Podman API socket
+  become: true
+  become_user: "{{ runner_account_user }}"
+  environment: "{{ runner_systemd_environment }}"
+  ansible.builtin.systemd_service:
+    name: podman.socket
+    scope: user
+    enabled: true
+    state: started
+
+- name: Wait for the rootless Podman socket
+  ansible.builtin.wait_for:
+    path: "{{ runner_podman_socket }}"
+    state: present
+    timeout: 30
+
+- name: Read rootless Podman information
+  become: true
+  become_user: "{{ runner_account_user }}"
+  environment: "{{ runner_systemd_environment }}"
+  ansible.builtin.command:
+    argv:
+      - podman
+      - info
+      - --format
+      - json
+  register: rootless_podman_info
+  changed_when: false
+
+- name: Require rootless Podman with Netavark networking
+  ansible.builtin.assert:
+    that:
+      - (rootless_podman_info.stdout | from_json).host.security.rootless | bool
+      - (rootless_podman_info.stdout | from_json).host.networkBackend == 'netavark'
+    fail_msg: >-
+      Podman must run rootless with the Netavark network backend for this Runner.
+
+- name: Read Podman client version
+  become: true
+  become_user: "{{ runner_account_user }}"
+  environment: "{{ runner_systemd_environment }}"
+  ansible.builtin.command:
+    argv:
+      - podman
+      - version
+      - --format
+      - "{{ '{{.Client.Version}}' }}"
+  register: runner_podman_version
+  changed_when: false
+
+- name: Require a GitLab-supported Podman version
+  ansible.builtin.assert:
+    that:
+      - runner_podman_version.stdout | trim is version('4.2.0', '>=')
+    fail_msg: GitLab Runner's Docker executor requires Podman 4.2.0 or newer.
+
+- name: Read aardvark-dns version
+  ansible.builtin.command:
+    argv:
+      - aardvark-dns
+      - --version
+  register: runner_aardvark_version_output
+  changed_when: false
+
+- name: Parse aardvark-dns version
+  ansible.builtin.set_fact:
+    runner_aardvark_version: >-
+      {{
+        (
+          runner_aardvark_version_output.stdout ~
+          runner_aardvark_version_output.stderr
+        ) | regex_search('[0-9]+\.[0-9]+\.[0-9]+') | default('')
+      }}
+
+- name: Reject aardvark-dns versions with known CI DNS instability
+  ansible.builtin.assert:
+    that:
+      - runner_aardvark_version | length > 0
+      - runner_aardvark_version is version('1.10.0', '>')
+    fail_msg: >-
+      aardvark-dns 1.10.0 and earlier have known intermittent DNS failures in
+      GitLab CI jobs. Upgrade the distribution package before continuing.

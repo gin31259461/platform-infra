@@ -1,0 +1,10 @@
+---
+- name: Show GitLab Runner host status
+  hosts: runner_hosts
+  become: true
+  gather_facts: true
+  serial: 1
+  roles:
+    - role: preflight
+    - role: runner_facts
+    - role: runner_status

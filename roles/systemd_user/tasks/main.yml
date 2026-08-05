@@ -1,0 +1,19 @@
+---
+- name: Enable lingering for the Runner account
+  ansible.builtin.command:
+    argv:
+      - loginctl
+      - enable-linger
+      - "{{ runner_account_user }}"
+    creates: "/var/lib/systemd/linger/{{ runner_account_user }}"
+
+- name: Start the Runner user manager
+  ansible.builtin.systemd_service:
+    name: "user@{{ runner_uid }}.service"
+    state: started
+
+- name: Wait for the Runner user D-Bus socket
+  ansible.builtin.wait_for:
+    path: "{{ runner_runtime_dir }}/bus"
+    state: present
+    timeout: 30

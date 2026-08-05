@@ -1,0 +1,5 @@
+---
+# Arch Linux cannot safely refresh package metadata without a full upgrade.
+# Set this inventory variable during an explicit maintenance window.
+runner_update_operating_system: false
+runner_apt_cache_valid_time: 3600

@@ -1,5 +1,0 @@
----
-- name: Install rootless Podman dependencies
-  community.general.pacman:
-    name: "{{ common_arch_packages }}"
-    state: present

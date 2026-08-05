@@ -1,41 +1,18 @@
 ---
-- name: Configure GitLab Runner stack
-  hosts: localhost
-
-  vars_files:
-    - "{{ stack_config }}"
-
-  vars:
-    platform_podman_kernel_modules:
-      - bridge
-      - veth
-      - br_netfilter
-
+- name: Converge GitLab Runner hosts
+  hosts: runner_hosts
+  become: true
+  gather_facts: true
+  serial: 1
+  any_errors_fatal: true
   roles:
-    - role: common/preflight
-      become: false
-      tags: [preflight]
-    - role: common/arch_packages
-      become: true
-      tags: [packages]
-    - role: gitlab_runner/runner_user
-      become: true
-      tags: [runner_user]
-    - role: common/systemd_user
-      become: true
-      tags: [systemd_user]
-    - role: common/rootless_podman
-      become: true
-      tags: [podman]
-    - role: common/network_validation
-      become: true
-      tags: [network]
-    - role: common/tls_validation
-      become: true
-      tags: [tls]
-    - role: gitlab_runner/runner_manager
-      become: true
-      tags: [runner_manager]
-    - role: gitlab_runner/runner_validation
-      become: true
-      tags: [runner_validation]
+    - role: preflight
+    - role: network_precheck
+    - role: packages
+    - role: kernel_network
+    - role: runner_user
+    - role: systemd_user
+    - role: rootless_podman
+    - role: tls
+    - role: runner_manager
+    - role: runner_validation

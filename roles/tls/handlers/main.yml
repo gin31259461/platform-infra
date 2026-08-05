@@ -1,0 +1,5 @@
+---
+- name: Refresh system CA trust
+  ansible.builtin.command:
+    argv: "{{ runner_ca_update_command }}"
+  changed_when: true

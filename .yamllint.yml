@@ -1,0 +1,11 @@
+---
+extends: default
+rules:
+  line-length:
+    max: 100
+    level: warning
+  truthy:
+    allowed-values: ["true", "false"]
+ignore:
+  - .ansible
+  - .venv

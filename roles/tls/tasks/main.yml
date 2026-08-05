@@ -1,0 +1,66 @@
+---
+- name: Define private CA target paths
+  ansible.builtin.set_fact:
+    runner_system_ca_file: >-
+      {{ runner_ca_anchor_directory }}/platform-infra-{{ stack.id }}.crt
+    runner_registry_ca_directory: "/etc/containers/certs.d/{{ gitlab.hostname }}"
+    runner_registry_ca_file: >-
+      /etc/containers/certs.d/{{ gitlab.hostname }}/platform-infra-{{ stack.id }}.crt
+
+- name: Validate private CA source on the control node
+  delegate_to: localhost
+  become: false
+  ansible.builtin.stat:
+    path: "{{ tls.private_ca_source }}"
+  register: private_ca_source
+  when: tls.private_ca_enabled | bool
+
+- name: Require a readable public private CA certificate
+  ansible.builtin.assert:
+    that:
+      - private_ca_source.stat.exists
+      - private_ca_source.stat.isreg
+      - private_ca_source.stat.readable
+    fail_msg: tls.private_ca_source must reference a readable public certificate.
+  when: tls.private_ca_enabled | bool
+
+- name: Create registry certificate directory
+  ansible.builtin.file:
+    path: "{{ runner_registry_ca_directory }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  when: tls.private_ca_enabled | bool
+
+- name: Install private CA in the system trust store
+  ansible.builtin.copy:
+    src: "{{ tls.private_ca_source }}"
+    dest: "{{ runner_system_ca_file }}"
+    owner: root
+    group: root
+    mode: "0644"
+  when: tls.private_ca_enabled | bool
+  notify: Refresh system CA trust
+
+- name: Install private CA for container registry access
+  ansible.builtin.copy:
+    src: "{{ tls.private_ca_source }}"
+    dest: "{{ runner_registry_ca_file }}"
+    owner: root
+    group: root
+    mode: "0644"
+  when: tls.private_ca_enabled | bool
+
+- name: Remove obsolete system private CA
+  ansible.builtin.file:
+    path: "{{ runner_system_ca_file }}"
+    state: absent
+  when: not tls.private_ca_enabled | bool
+  notify: Refresh system CA trust
+
+- name: Remove obsolete registry private CA
+  ansible.builtin.file:
+    path: "{{ runner_registry_ca_file }}"
+    state: absent
+  when: not tls.private_ca_enabled | bool
