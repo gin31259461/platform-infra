@@ -1,0 +1,11 @@
+---
+- name: Verify GitLab Runner hosts
+  hosts: runner_hosts
+  become: true
+  gather_facts: true
+  serial: 1
+  any_errors_fatal: true
+  roles:
+    - role: preflight
+    - role: runner_facts
+    - role: runner_validation

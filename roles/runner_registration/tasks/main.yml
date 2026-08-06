@@ -1,0 +1,121 @@
+---
+- name: Read Runner authentication token from the controller environment
+  ansible.builtin.set_fact:
+    runner_registration_token: >-
+      {{ lookup('ansible.builtin.env', 'PLATFORM_INFRA_RUNNER_TOKEN') }}
+  no_log: true
+
+- name: Derive Runner token validity without exposing its value
+  ansible.builtin.set_fact:
+    runner_registration_token_valid: >-
+      {{
+        runner_registration_token | length > 0 and
+        (
+          runner_registration_token.startswith('glrt-') or
+          runner_registration_token.startswith('glrtr-')
+        )
+      }}
+  no_log: true
+
+- name: Require a Runner authentication token
+  ansible.builtin.assert:
+    that:
+      - runner_registration_token_valid | bool
+    fail_msg: >-
+      GITLAB_RUNNER_TOKEN must contain a GitLab Runner authentication token.
+
+- name: Require the Runner manager service to be active
+  become: true
+  become_user: "{{ runner_account_user }}"
+  environment: "{{ runner_systemd_environment }}"
+  ansible.builtin.command:
+    argv:
+      - systemctl
+      - --user
+      - is-active
+      - "{{ runner.service_name }}.service"
+  changed_when: false
+
+- name: List existing Runner registrations
+  become: true
+  become_user: "{{ runner_account_user }}"
+  environment: "{{ runner_systemd_environment }}"
+  ansible.builtin.command:
+    argv:
+      - podman
+      - exec
+      - "{{ runner.service_name }}"
+      - gitlab-runner
+      - list
+  register: existing_runner_registrations
+  changed_when: false
+  no_log: true
+
+- name: Derive existing registration state without exposing token output
+  ansible.builtin.set_fact:
+    runner_registration_present: >-
+      {{
+        runner.name in
+        (
+          existing_runner_registrations.stdout ~
+          existing_runner_registrations.stderr
+        )
+      }}
+    runner_registration_compatible: >-
+      {{
+        'Executor=' not in
+        (
+          existing_runner_registrations.stdout ~
+          existing_runner_registrations.stderr
+        ) or
+        runner.name in
+        (
+          existing_runner_registrations.stdout ~
+          existing_runner_registrations.stderr
+        )
+      }}
+  no_log: true
+
+- name: Reject a different registration in the dedicated stack
+  ansible.builtin.assert:
+    that:
+      - runner_registration_compatible | bool
+    fail_msg: >-
+      This dedicated Runner stack already contains a different registration.
+      Purge it explicitly before registering another Runner.
+
+- name: Register Runner with token supplied through process environment
+  become: true
+  become_user: "{{ runner_account_user }}"
+  environment:
+    XDG_RUNTIME_DIR: "{{ runner_runtime_dir }}"
+    DBUS_SESSION_BUS_ADDRESS: "unix:path={{ runner_runtime_dir }}/bus"
+    CI_SERVER_URL: "{{ gitlab.url }}"
+    CI_SERVER_TOKEN: "{{ runner_registration_token }}"
+    REGISTER_NON_INTERACTIVE: "true"
+  ansible.builtin.command:
+    argv:
+      - podman
+      - exec
+      - --env
+      - CI_SERVER_URL
+      - --env
+      - CI_SERVER_TOKEN
+      - --env
+      - REGISTER_NON_INTERACTIVE
+      - "{{ runner.service_name }}"
+      - gitlab-runner
+      - register
+      - --template-config
+      - /etc/gitlab-runner/registration-template.toml
+  when: not runner_registration_present | bool
+  changed_when: true
+  no_log: true
+
+- name: Reconcile managed Runner configuration after registration
+  ansible.builtin.include_role:
+    name: runner_manager
+
+- name: Verify registered Runner
+  ansible.builtin.include_role:
+    name: runner_validation

@@ -1,4 +1,11 @@
 ---
-# SPEC.md requires roles/<family>/<role>, so role paths are intentional.
+profile: production
+exclude_paths:
+  - .ansible/
+  - .venv/
+  - stacks/**/config.yml
 skip_list:
-  - role-name[path]
+  # Roles intentionally share one validated runner_* runtime namespace.
+  - var-naming[no-role-prefix]
+  # Compact role files use descriptive task names without redundant prefixes.
+  - name[prefix]

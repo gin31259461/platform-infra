@@ -1,0 +1,38 @@
+[Unit]
+Description=GitLab Runner manager for {{ stack.id }}
+Wants=network-online.target
+After=network-online.target podman.socket
+Requires=podman.socket
+
+[Service]
+Type=simple
+Environment=XDG_RUNTIME_DIR={{ runner_runtime_dir }}
+Environment=DBUS_SESSION_BUS_ADDRESS=unix:path={{ runner_runtime_dir }}/bus
+ExecStartPre=-/usr/bin/podman rm --force {{ runner.service_name }}
+ExecStart=/usr/bin/podman run \
+  --rm \
+  --name {{ runner.service_name }} \
+  --network host \
+  --security-opt label=disable \
+  --stop-signal SIGQUIT \
+  --volume {{ runner_config_dir }}:/etc/gitlab-runner:rw \
+  --volume {{ runner_cache_dir }}:/cache:rw \
+  --volume {{ runner_podman_socket }}:/run/podman/podman.sock:rw \
+  --env DOCKER_HOST=unix:///run/podman/podman.sock \
+{% if network.vpn_dns | length > 0 %}
+  --dns {{ network.vpn_dns }} \
+{% endif %}
+  {{ runner_manager_image }} \
+  run \
+  --user=gitlab-runner \
+  --working-directory=/home/gitlab-runner
+ExecStop=-/usr/bin/podman stop --time 30 {{ runner.service_name }}
+ExecStopPost=-/usr/bin/podman rm --force {{ runner.service_name }}
+Restart=always
+RestartSec=5
+TimeoutStartSec=120
+TimeoutStopSec=45
+Delegate=yes
+
+[Install]
+WantedBy=default.target

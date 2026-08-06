@@ -1,0 +1,35 @@
+---
+- name: Read Runner account database entry
+  ansible.builtin.getent:
+    database: passwd
+    key: "{{ runner_account_user }}"
+
+- name: Store Runner account identity facts
+  ansible.builtin.set_fact:
+    runner_uid: "{{ ansible_facts.getent_passwd[runner_account_user][1] | int }}"
+    runner_home: "{{ ansible_facts.getent_passwd[runner_account_user][4] }}"
+
+- name: Store Runner account runtime paths
+  ansible.builtin.set_fact:
+    runner_runtime_dir: "/run/user/{{ runner_uid }}"
+    runner_podman_socket: "/run/user/{{ runner_uid }}/podman/podman.sock"
+    runner_config_dir: "{{ runner_home }}/gitlab-runner/config"
+    runner_config_file: "{{ runner_home }}/gitlab-runner/config/config.toml"
+    runner_registration_template_file: >-
+      {{ runner_home }}/gitlab-runner/config/registration-template.toml
+    runner_certificate_dir: "{{ runner_home }}/gitlab-runner/config/certs"
+    runner_certificate_file: >-
+      {{ runner_home }}/gitlab-runner/config/certs/{{ gitlab.hostname }}.crt
+    runner_cache_dir: "{{ runner_home }}/gitlab-runner/cache"
+    runner_systemd_unit_dir: "{{ runner_home }}/.config/systemd/user"
+    runner_systemd_unit_file: >-
+      {{ runner_home }}/.config/systemd/user/{{ runner.service_name }}.service
+    runner_systemd_environment:
+      XDG_RUNTIME_DIR: "/run/user/{{ runner_uid }}"
+      DBUS_SESSION_BUS_ADDRESS: "unix:path=/run/user/{{ runner_uid }}/bus"
+
+- name: Require configured and actual Runner homes to match
+  ansible.builtin.assert:
+    that:
+      - runner_home == runner_account_home
+    fail_msg: The existing account home does not match runner.home.

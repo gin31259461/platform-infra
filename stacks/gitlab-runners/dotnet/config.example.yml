@@ -1,5 +1,5 @@
 ---
-# Copy this file to config.yml. Replace every REPLACE_* value before use.
+# Copy this file to config.yml and replace every REPLACE_* value before use.
 stack:
   type: gitlab-runner
   id: dotnet
@@ -13,16 +13,16 @@ gitlab:
 runner:
   name: A-dotnet-podman
   user: gitlab-runner-dotnet
+  home: /var/lib/gitlab-runner-dotnet
+  subuid_start: 165536
+  subgid_start: 165536
+  subordinate_id_count: 65536
   container_name: gitlab-runner-dotnet
   service_name: gitlab-runner-dotnet
-
-  # Confirm compatibility with the target GitLab version before upgrading.
   image: docker.io/gitlab/gitlab-runner:v18.10.1
-
   tags:
     - dotnet
     - podman
-
   concurrent: 1
   cpus: 4
   memory: 6g
@@ -30,20 +30,16 @@ runner:
   pull_policy: if-not-present
   privileged: false
   default_job_image: mcr.microsoft.com/dotnet/sdk:10.0.302-noble
-
   allowed_images:
     - mcr.microsoft.com/dotnet/sdk:*
     - mcr.microsoft.com/dotnet/runtime:*
     - mcr.microsoft.com/dotnet/aspnet:*
-
   allowed_services:
     - mcr.microsoft.com/mssql/server:*
 
 network:
   vpn_interface: REPLACE_WITH_VPN_INTERFACE
   validation_image: docker.io/curlimages/curl:8.12.1
-  # Set this to the VPN resolver IP when host DNS changes during VPN startup.
-  # For Tailscale DNS on this host, use "100.100.100.100".
   vpn_dns: ""
   use_host_network_for_runner_manager: true
 

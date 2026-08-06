@@ -1,0 +1,38 @@
+---
+- name: Load distribution package variables
+  ansible.builtin.include_vars:
+    file: "{{ lookup('ansible.builtin.first_found', package_variable_files) }}"
+  vars:
+    package_variable_files:
+      files:
+        - "{{ ansible_facts.distribution }}.yml"
+        - "{{ ansible_facts.os_family }}.yml"
+      paths:
+        - "{{ role_path }}/vars"
+
+- name: Install Arch Linux Runner host packages
+  community.general.pacman:
+    name: "{{ runner_host_packages }}"
+    state: present
+    update_cache: "{{ runner_update_operating_system | bool }}"
+    upgrade: "{{ runner_update_operating_system | bool }}"
+  when: ansible_facts.distribution == 'Archlinux'
+
+- name: Install Debian-family Runner host packages
+  ansible.builtin.apt:
+    name: "{{ runner_host_packages }}"
+    state: present
+    update_cache: true
+    cache_valid_time: "{{ runner_apt_cache_valid_time | int }}"
+  when: ansible_facts.os_family == 'Debian'
+
+- name: Install RedHat-family Runner host packages
+  ansible.builtin.dnf:
+    name: "{{ runner_host_packages }}"
+    state: present
+    update_cache: true
+  when: ansible_facts.os_family == 'RedHat'
+
+- name: Refresh package facts
+  ansible.builtin.package_facts:
+    manager: auto

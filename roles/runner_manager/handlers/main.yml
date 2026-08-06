@@ -1,0 +1,17 @@
+---
+- name: Reload Runner user systemd
+  become: true
+  become_user: "{{ runner_account_user }}"
+  environment: "{{ runner_systemd_environment }}"
+  ansible.builtin.systemd_service:
+    scope: user
+    daemon_reload: true
+
+- name: Restart Runner manager
+  become: true
+  become_user: "{{ runner_account_user }}"
+  environment: "{{ runner_systemd_environment }}"
+  ansible.builtin.systemd_service:
+    name: "{{ runner.service_name }}.service"
+    scope: user
+    state: restarted

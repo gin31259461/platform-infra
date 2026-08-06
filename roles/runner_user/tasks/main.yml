@@ -1,0 +1,124 @@
+---
+- name: Read existing Runner account when present
+  ansible.builtin.getent:
+    database: passwd
+    key: "{{ runner_account_user }}"
+    fail_key: false
+
+- name: Require an existing account to use the configured home
+  ansible.builtin.assert:
+    that:
+      - ansible_facts.getent_passwd[runner_account_user][4] == runner_account_home
+    fail_msg: >-
+      Existing account {{ runner_account_user }} uses a different home directory.
+      Resolve it manually before continuing.
+  when: runner_account_user in ansible_facts.getent_passwd
+
+- name: Create dedicated Runner account
+  ansible.builtin.user:
+    name: "{{ runner_account_user }}"
+    home: "{{ runner_account_home }}"
+    create_home: true
+    shell: /bin/bash
+    password_lock: true
+    state: present
+
+- name: Read subordinate UID allocations
+  ansible.builtin.slurp:
+    src: /etc/subuid
+  register: subordinate_uid_file
+
+- name: Require at most one existing subordinate UID allocation
+  ansible.builtin.assert:
+    that:
+      - >-
+        (
+          (subordinate_uid_file.content | b64decode).splitlines() |
+          select('match', '^' ~ runner_account_user ~ ':') | list | length
+        ) <= 1
+    fail_msg: >-
+      Multiple subordinate UID allocations exist for {{ runner_account_user }}.
+
+- name: Reject overlapping subordinate UID allocations
+  ansible.builtin.assert:
+    that:
+      - desired_range_end < existing_range_start or runner_subuid_start | int > existing_range_end
+    fail_msg: >-
+      Desired subordinate UID range {{ runner_subuid_start }}:{{ runner_subordinate_id_count }}
+      overlaps allocation {{ item }}.
+  vars:
+    allocation_fields: "{{ item.split(':') }}"
+    existing_range_start: "{{ allocation_fields[1] | int }}"
+    existing_range_end: >-
+      {{ (allocation_fields[1] | int) + (allocation_fields[2] | int) - 1 }}
+    desired_range_end: >-
+      {{ (runner_subuid_start | int) + (runner_subordinate_id_count | int) - 1 }}
+  loop: "{{ (subordinate_uid_file.content | b64decode).splitlines() }}"
+  when:
+    - item | trim | length > 0
+    - not item.startswith('#')
+    - item.split(':') | length == 3
+    - item.split(':')[0] != runner_account_user
+
+- name: Configure subordinate UID range
+  ansible.builtin.lineinfile:
+    path: /etc/subuid
+    regexp: "^{{ runner_account_user | regex_escape }}:"
+    line: >-
+      {{ runner_account_user }}:{{ runner_subuid_start }}:{{ runner_subordinate_id_count }}
+    create: true
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Read subordinate GID allocations
+  ansible.builtin.slurp:
+    src: /etc/subgid
+  register: subordinate_gid_file
+
+- name: Require at most one existing subordinate GID allocation
+  ansible.builtin.assert:
+    that:
+      - >-
+        (
+          (subordinate_gid_file.content | b64decode).splitlines() |
+          select('match', '^' ~ runner_account_user ~ ':') | list | length
+        ) <= 1
+    fail_msg: >-
+      Multiple subordinate GID allocations exist for {{ runner_account_user }}.
+
+- name: Reject overlapping subordinate GID allocations
+  ansible.builtin.assert:
+    that:
+      - desired_range_end < existing_range_start or runner_subgid_start | int > existing_range_end
+    fail_msg: >-
+      Desired subordinate GID range {{ runner_subgid_start }}:{{ runner_subordinate_id_count }}
+      overlaps allocation {{ item }}.
+  vars:
+    allocation_fields: "{{ item.split(':') }}"
+    existing_range_start: "{{ allocation_fields[1] | int }}"
+    existing_range_end: >-
+      {{ (allocation_fields[1] | int) + (allocation_fields[2] | int) - 1 }}
+    desired_range_end: >-
+      {{ (runner_subgid_start | int) + (runner_subordinate_id_count | int) - 1 }}
+  loop: "{{ (subordinate_gid_file.content | b64decode).splitlines() }}"
+  when:
+    - item | trim | length > 0
+    - not item.startswith('#')
+    - item.split(':') | length == 3
+    - item.split(':')[0] != runner_account_user
+
+- name: Configure subordinate GID range
+  ansible.builtin.lineinfile:
+    path: /etc/subgid
+    regexp: "^{{ runner_account_user | regex_escape }}:"
+    line: >-
+      {{ runner_account_user }}:{{ runner_subgid_start }}:{{ runner_subordinate_id_count }}
+    create: true
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Load created Runner account facts
+  ansible.builtin.include_role:
+    name: runner_facts

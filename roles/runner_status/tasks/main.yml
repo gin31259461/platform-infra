@@ -1,0 +1,67 @@
+---
+- name: Read Runner manager service state
+  become: true
+  become_user: "{{ runner_account_user }}"
+  environment: "{{ runner_systemd_environment }}"
+  ansible.builtin.command:
+    argv:
+      - systemctl
+      - --user
+      - is-active
+      - "{{ runner.service_name }}.service"
+  register: runner_status_service
+  changed_when: false
+  failed_when: runner_status_service.rc not in [0, 3]
+
+- name: Read Runner manager container state
+  become: true
+  become_user: "{{ runner_account_user }}"
+  environment: "{{ runner_systemd_environment }}"
+  ansible.builtin.command:
+    argv:
+      - podman
+      - ps
+      - --all
+      - --filter
+      - "name=^{{ runner.service_name }}$"
+      - --format
+      - "{{ '{{.Names}} {{.Status}}' }}"
+  register: runner_status_container
+  changed_when: false
+
+- name: Read Runner registrations when the manager is active
+  become: true
+  become_user: "{{ runner_account_user }}"
+  environment: "{{ runner_systemd_environment }}"
+  ansible.builtin.command:
+    argv:
+      - podman
+      - exec
+      - "{{ runner.service_name }}"
+      - gitlab-runner
+      - list
+  register: runner_status_registrations
+  when: runner_status_service.stdout | trim == 'active'
+  changed_when: false
+  failed_when: false
+  no_log: true
+
+- name: Derive registration status without exposing token output
+  ansible.builtin.set_fact:
+    runner_status_registered: >-
+      {{
+        runner.name in
+        (
+          runner_status_registrations.stdout | default('') ~
+          runner_status_registrations.stderr | default('')
+        )
+      }}
+  no_log: true
+
+- name: Display Runner status
+  ansible.builtin.debug:
+    msg:
+      host: "{{ inventory_hostname }}"
+      service: "{{ runner_status_service.stdout | trim }}"
+      container: "{{ runner_status_container.stdout | trim | default('absent', true) }}"
+      registered: "{{ runner_status_registered | bool }}"

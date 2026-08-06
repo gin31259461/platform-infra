@@ -1,5 +1,0 @@
----
-gitlab_runner_home_mode: "0750"
-gitlab_runner_config_mode: "0700"
-gitlab_runner_subid_range_size: 65536
-gitlab_runner_subid_minimum: 100000

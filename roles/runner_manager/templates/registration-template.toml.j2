@@ -1,0 +1,19 @@
+[[runners]]
+  name = {{ runner.name | to_json }}
+  executor = "docker"
+  environment = ["FF_NETWORK_PER_BUILD=1"]
+
+  [runners.docker]
+    host = "unix:///run/podman/podman.sock"
+    image = {{ runner.default_job_image | to_json }}
+    privileged = false
+    cpus = {{ runner.cpus | to_json }}
+    memory = {{ runner.memory | to_json }}
+    shm_size = {{ runner.shm_size_bytes | int }}
+    pull_policy = {{ runner.pull_policy | to_json }}
+    volumes = ["/cache"]
+    allowed_images = {{ runner.allowed_images | to_json }}
+    allowed_services = {{ runner.allowed_services | to_json }}
+{% if network.vpn_dns | length > 0 %}
+    dns = [{{ network.vpn_dns | to_json }}]
+{% endif %}

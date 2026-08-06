@@ -1,0 +1,161 @@
+---
+- name: Load distribution CA variables
+  ansible.builtin.include_vars:
+    file: "{{ lookup('ansible.builtin.first_found', removal_variable_files) }}"
+  vars:
+    removal_variable_files:
+      files:
+        - "{{ ansible_facts.distribution }}.yml"
+        - "{{ ansible_facts.os_family }}.yml"
+      paths:
+        - "{{ playbook_dir }}/../roles/packages/vars"
+
+- name: Define removal paths
+  ansible.builtin.set_fact:
+    removal_runner_user: "{{ runner.user }}"
+    removal_runner_home: "{{ runner.home }}"
+    removal_systemd_unit_file: >-
+      {{ runner.home }}/.config/systemd/user/{{ runner.service_name }}.service
+    removal_system_ca_file: >-
+      {{ runner_ca_anchor_directory }}/platform-infra-{{ stack.id }}.crt
+    removal_registry_ca_file: >-
+      /etc/containers/certs.d/{{ gitlab.hostname }}/platform-infra-{{ stack.id }}.crt
+
+- name: Read Runner account when present
+  ansible.builtin.getent:
+    database: passwd
+    key: "{{ removal_runner_user }}"
+    fail_key: false
+
+- name: Store removal account facts
+  ansible.builtin.set_fact:
+    removal_runner_exists: "{{ removal_runner_user in ansible_facts.getent_passwd }}"
+    removal_runner_uid: >-
+      {{
+        ansible_facts.getent_passwd[removal_runner_user][1]
+        if removal_runner_user in ansible_facts.getent_passwd
+        else ''
+      }}
+
+- name: Inspect Runner manager service unit
+  ansible.builtin.stat:
+    path: "{{ removal_systemd_unit_file }}"
+  register: removal_runner_unit
+
+- name: Stop and disable Runner manager service
+  become: true
+  become_user: "{{ removal_runner_user }}"
+  environment:
+    XDG_RUNTIME_DIR: "/run/user/{{ removal_runner_uid }}"
+    DBUS_SESSION_BUS_ADDRESS: "unix:path=/run/user/{{ removal_runner_uid }}/bus"
+  ansible.builtin.systemd_service:
+    name: "{{ runner.service_name }}.service"
+    scope: user
+    enabled: false
+    state: stopped
+  when:
+    - removal_runner_exists | bool
+    - removal_runner_unit.stat.exists
+
+- name: Remove Runner manager service unit
+  ansible.builtin.file:
+    path: "{{ removal_systemd_unit_file }}"
+    state: absent
+  register: removed_runner_unit
+
+- name: Reload Runner user systemd after unit removal
+  become: true
+  become_user: "{{ removal_runner_user }}"
+  environment:
+    XDG_RUNTIME_DIR: "/run/user/{{ removal_runner_uid }}"
+    DBUS_SESSION_BUS_ADDRESS: "unix:path=/run/user/{{ removal_runner_uid }}/bus"
+  ansible.builtin.systemd_service:
+    scope: user
+    daemon_reload: true
+  when:
+    - removal_runner_exists | bool
+    - removed_runner_unit.changed
+
+- name: Check for an orphaned Runner manager container
+  become: true
+  become_user: "{{ removal_runner_user }}"
+  environment:
+    XDG_RUNTIME_DIR: "/run/user/{{ removal_runner_uid }}"
+    DBUS_SESSION_BUS_ADDRESS: "unix:path=/run/user/{{ removal_runner_uid }}/bus"
+  ansible.builtin.command:
+    argv:
+      - podman
+      - container
+      - exists
+      - "{{ runner.service_name }}"
+  register: orphaned_runner_container
+  when: removal_runner_exists | bool
+  changed_when: false
+  failed_when: orphaned_runner_container.rc not in [0, 1]
+
+- name: Remove orphaned Runner manager container
+  become: true
+  become_user: "{{ removal_runner_user }}"
+  environment:
+    XDG_RUNTIME_DIR: "/run/user/{{ removal_runner_uid }}"
+    DBUS_SESSION_BUS_ADDRESS: "unix:path=/run/user/{{ removal_runner_uid }}/bus"
+  ansible.builtin.command:
+    argv:
+      - podman
+      - rm
+      - --force
+      - "{{ runner.service_name }}"
+  when:
+    - removal_runner_exists | bool
+    - orphaned_runner_container.rc | default(1) == 0
+  changed_when: true
+
+- name: Remove system private CA
+  ansible.builtin.file:
+    path: "{{ removal_system_ca_file }}"
+    state: absent
+  notify: Refresh system CA trust after removal
+
+- name: Remove container registry private CA
+  ansible.builtin.file:
+    path: "{{ removal_registry_ca_file }}"
+    state: absent
+
+- name: Stop and disable rootless Podman socket when purging
+  become: true
+  become_user: "{{ removal_runner_user }}"
+  environment:
+    XDG_RUNTIME_DIR: "/run/user/{{ removal_runner_uid }}"
+    DBUS_SESSION_BUS_ADDRESS: "unix:path=/run/user/{{ removal_runner_uid }}/bus"
+  ansible.builtin.systemd_service:
+    name: podman.socket
+    scope: user
+    enabled: false
+    state: stopped
+  when:
+    - runner_purge | default(false) | bool
+    - removal_runner_exists | bool
+
+- name: Remove Runner data when purging
+  ansible.builtin.file:
+    path: "{{ removal_runner_home }}/gitlab-runner"
+    state: absent
+  when: runner_purge | default(false) | bool
+
+- name: Disable Runner account lingering when purging
+  ansible.builtin.command:
+    argv:
+      - loginctl
+      - disable-linger
+      - "{{ removal_runner_user }}"
+    removes: "/var/lib/systemd/linger/{{ removal_runner_user }}"
+  when:
+    - runner_purge | default(false) | bool
+    - removal_runner_exists | bool
+
+- name: Remove Runner account when purging
+  ansible.builtin.user:
+    name: "{{ removal_runner_user }}"
+    state: absent
+    remove: true
+  when: runner_purge | default(false) | bool

@@ -1,3 +1,0 @@
----
-gitlab_runner_start_retries: 30
-gitlab_runner_start_delay_seconds: 2
