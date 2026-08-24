@@ -153,6 +153,76 @@ def test_runner_lint_is_guarded_by_cli_feature_detection() -> None:
     assert "runner_cli_help.stdout_lines" in cast(str, lint_task["when"])
 
 
+def test_runner_status_detects_registration_independently_of_display_name() -> None:
+    """A valid dedicated registration may retain its GitLab display name."""
+    task = _task_named(
+        _load_role_tasks("runner_status"),
+        "Derive registration status without exposing token output",
+    )
+    set_fact_arguments = cast(dict[str, str], task["ansible.builtin.set_fact"])
+    encoded_config = base64.b64encode(
+        b'[[runners]]\n  name = "group-runner"\n  executor = "docker"\n'
+    ).decode("ascii")
+    variables: dict[str, object] = {
+        "runner": {"name": "A-frontend-podman"},
+        "runner_status_config_file": {"stat": {"exists": True}},
+        "runner_status_config": {"content": encoded_config},
+    }
+
+    assert (
+        _render_runner_manager_fact(
+            set_fact_arguments["runner_status_registered"],
+            variables,
+        )
+        is True
+    )
+
+
+def test_runner_status_uses_persisted_registration_when_probe_is_unavailable() -> None:
+    """Registration state must not depend on a running manager container."""
+    tasks = _load_role_tasks("runner_status")
+    task = _task_named(
+        tasks,
+        "Derive registration status without exposing token output",
+    )
+    read_task = _task_named(tasks, "Read persisted Runner configuration")
+    set_fact_arguments = cast(dict[str, str], task["ansible.builtin.set_fact"])
+    encoded_config = base64.b64encode(
+        b'concurrent = 1\n\n[[runners]]\n  executor = "docker"\n'
+    ).decode("ascii")
+    variables: dict[str, object] = {
+        "runner_status_config_file": {"stat": {"exists": True}},
+        "runner_status_config": {"content": encoded_config},
+    }
+
+    assert read_task["no_log"] is True
+    assert task["no_log"] is True
+    assert (
+        _render_runner_manager_fact(
+            set_fact_arguments["runner_status_registered"],
+            variables,
+        )
+        is True
+    )
+
+
+def test_runner_status_reports_missing_configuration_as_unregistered() -> None:
+    """A host without persisted Runner configuration is not registered."""
+    task = _task_named(
+        _load_role_tasks("runner_status"),
+        "Derive registration status without exposing token output",
+    )
+    set_fact_arguments = cast(dict[str, str], task["ansible.builtin.set_fact"])
+
+    assert (
+        _render_runner_manager_fact(
+            set_fact_arguments["runner_status_registered"],
+            {"runner_status_config_file": {"stat": {"exists": False}}},
+        )
+        is False
+    )
+
+
 def test_missing_runner_account_skips_existing_home_assertion() -> None:
     """A missing getent entry must not be treated as an existing account."""
     task = _task_named(

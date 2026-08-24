@@ -29,32 +29,29 @@
   register: runner_status_container
   changed_when: false
 
-- name: Read Runner registrations when the manager is active
-  become: true
-  become_user: "{{ runner_account_user }}"
-  environment: "{{ runner_systemd_environment }}"
-  ansible.builtin.command:
-    argv:
-      - podman
-      - exec
-      - "{{ runner.service_name }}"
-      - gitlab-runner
-      - list
-  register: runner_status_registrations
-  when: runner_status_service.stdout | trim == 'active'
-  changed_when: false
-  failed_when: false
+- name: Inspect persisted Runner configuration
+  ansible.builtin.stat:
+    path: "{{ runner_config_file }}"
+  register: runner_status_config_file
+
+- name: Read persisted Runner configuration
+  ansible.builtin.slurp:
+    src: "{{ runner_config_file }}"
+  register: runner_status_config
+  when: runner_status_config_file.stat.exists
   no_log: true
 
 - name: Derive registration status without exposing token output
   ansible.builtin.set_fact:
     runner_status_registered: >-
       {{
-        runner.name in
         (
-          runner_status_registrations.stdout | default('') ~
-          runner_status_registrations.stderr | default('')
+          runner_status_config.content | b64decode |
+          regex_findall('(?m)^\\s*\\[\\[runners\\]\\]\\s*$') | length
         )
+        > 0
+        if runner_status_config_file.stat.exists
+        else false
       }}
   no_log: true
 
