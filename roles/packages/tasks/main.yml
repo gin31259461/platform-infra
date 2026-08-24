@@ -10,12 +10,18 @@
       paths:
         - "{{ role_path }}/vars"
 
+- name: Upgrade the Arch Linux Runner host
+  community.general.pacman:
+    update_cache: true
+    upgrade: true
+  when:
+    - ansible_facts.distribution == 'Archlinux'
+    - runner_update_operating_system | bool
+
 - name: Install Arch Linux Runner host packages
   community.general.pacman:
     name: "{{ runner_host_packages }}"
     state: present
-    update_cache: "{{ runner_update_operating_system | bool }}"
-    upgrade: "{{ runner_update_operating_system | bool }}"
   when: ansible_facts.distribution == 'Archlinux'
 
 - name: Install Debian-family Runner host packages
