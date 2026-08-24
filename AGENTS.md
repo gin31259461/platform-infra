@@ -66,8 +66,8 @@ only when the architecture intentionally changes.
 
 - Preserve fail-closed configuration behavior: reject unknown fields,
   secret-like keys, unresolved local placeholders, unsafe images, privileged
-  Runners, concurrency above one, and overlapping stack identities or
-  subordinate-ID ranges.
+  Runners, concurrency other than one, shared Runner users or services, and
+  overlapping subordinate-ID ranges.
 - Keep authentication tokens at the registration boundary. Pass them through
   the process environment, use `no_log` wherever registration data can appear,
   and never serialize them into arguments, YAML, inventory, fixtures, or logs.
@@ -105,18 +105,22 @@ certificates are the only certificate material this repository manages.
 
 ## Development workflow
 
-Use focused tests while iterating, then run the complete gate before handoff:
+Run Ansible-backed commands only with an active UTF-8 locale; `locale charmap`
+must report `UTF-8`. Diagnose an invalid locale without changing operating
+system locale configuration unless the user authorizes that host mutation.
+
+Use focused tests while iterating, then run the repository-owned complete gate
+before handoff:
 
 ```bash
 uv lock --check
-uv run --locked ruff format --check .
-uv run --locked ruff check .
-uv run --locked mypy --strict src tests bootstrap.py
-uv run --locked pytest
-uv run --locked yamllint .
-uv run --locked ansible-lint
-uv run --locked platform-infra validate-all
+uv run --locked platform-infra-quality
 ```
+
+The quality command owns Python formatting and linting, strict typing, tests
+with coverage, YAML and Ansible linting, and stack validation. Update
+`src/platform_infra/quality.py` when the repository-wide gate changes instead
+of duplicating a second command inventory here.
 
 Do not edit generated environments, caches, coverage output, or installed
 collections. When dependencies intentionally change, update the manifest and
