@@ -18,6 +18,13 @@ def _load_role_tasks(role_name: str) -> list[dict[str, object]]:
     )
 
 
+def _mapping_field(
+    mapping: dict[str, object],
+    field_name: str,
+) -> dict[str, object]:
+    return cast(dict[str, object], mapping[field_name])
+
+
 def _task_named(
     tasks: list[dict[str, object]],
     task_name: str,
@@ -28,6 +35,23 @@ def _task_named(
 def _render_native(expression: str, variables: dict[str, object]) -> object:
     environment = NativeEnvironment(undefined=StrictUndefined)
     return environment.from_string(expression).render(variables)
+
+
+def test_local_inventory_uses_system_python_for_become_user_tasks() -> None:
+    """Runner accounts cannot execute a controller virtualenv under a private home."""
+    repository_root = Path(__file__).parents[1]
+    inventory_path = repository_root / "inventory" / "localhost.yml"
+    inventory = cast(
+        dict[str, object],
+        yaml.safe_load(inventory_path.read_text(encoding="utf-8")),
+    )
+    all_group = _mapping_field(inventory, "all")
+    children = _mapping_field(all_group, "children")
+    runner_hosts = _mapping_field(children, "runner_hosts")
+    hosts = _mapping_field(runner_hosts, "hosts")
+    localhost = _mapping_field(hosts, "localhost")
+
+    assert localhost.get("ansible_python_interpreter") == "/usr/bin/python3"
 
 
 def test_pacman_tasks_separate_package_installation_from_system_upgrade() -> None:
