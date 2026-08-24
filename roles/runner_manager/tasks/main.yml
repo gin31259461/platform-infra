@@ -80,8 +80,8 @@
       {{
         (
           existing_runner_config.content | b64decode |
-          regex_search('(?m)^\\s*id\\s*=\\s*([^\\n]+)', '\\1') |
-          default([], true) | first | default('')
+          regex_findall('(?m)^\\s*id\\s*=\\s*([^\\n]+)') |
+          first | default('')
         )
         if existing_runner_config_file.stat.exists
         else ''
@@ -90,8 +90,8 @@
       {{
         (
           existing_runner_config.content | b64decode |
-          regex_search('(?m)^\\s*token\\s*=\\s*"([^"]+)"', '\\1') |
-          default([], true) | first | default('')
+          regex_findall('(?m)^\\s*token\\s*=\\s*"([^"]+)"') |
+          first | default('')
         )
         if existing_runner_config_file.stat.exists
         else ''
@@ -100,8 +100,8 @@
       {{
         (
           existing_runner_config.content | b64decode |
-          regex_search('(?m)^\\s*token_obtained_at\\s*=\\s*([^\\n]+)', '\\1') |
-          default([], true) | first | default('')
+          regex_findall('(?m)^\\s*token_obtained_at\\s*=\\s*([^\\n]+)') |
+          first | default('')
         )
         if existing_runner_config_file.stat.exists
         else ''
@@ -110,8 +110,8 @@
       {{
         (
           existing_runner_config.content | b64decode |
-          regex_search('(?m)^\\s*token_expires_at\\s*=\\s*([^\\n]+)', '\\1') |
-          default([], true) | first | default('')
+          regex_findall('(?m)^\\s*token_expires_at\\s*=\\s*([^\\n]+)') |
+          first | default('')
         )
         if existing_runner_config_file.stat.exists
         else ''

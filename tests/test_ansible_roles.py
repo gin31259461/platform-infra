@@ -1,5 +1,7 @@
 """Contract tests for Ansible roles."""
 
+import base64
+import re
 from pathlib import Path
 from typing import cast
 
@@ -34,6 +36,24 @@ def _task_named(
 
 def _render_native(expression: str, variables: dict[str, object]) -> object:
     environment = NativeEnvironment(undefined=StrictUndefined)
+    return environment.from_string(expression).render(variables)
+
+
+def _decode_base64(value: str) -> str:
+    return base64.b64decode(value).decode("utf-8")
+
+
+def _regex_findall(value: str, pattern: str) -> list[str]:
+    return re.findall(pattern, value)
+
+
+def _render_runner_manager_fact(
+    expression: str,
+    variables: dict[str, object],
+) -> object:
+    environment = NativeEnvironment(undefined=StrictUndefined)
+    environment.filters["b64decode"] = _decode_base64
+    environment.filters["regex_findall"] = _regex_findall
     return environment.from_string(expression).render(variables)
 
 
@@ -100,6 +120,24 @@ def test_aardvark_dns_uses_distribution_executable(
     assert (
         distribution_variables["runner_aardvark_dns_executable"] == expected_executable
     )
+
+
+def test_unregistered_config_has_empty_registration_metadata() -> None:
+    """Missing metadata must not require a regex backreference match."""
+    task = _task_named(
+        _load_role_tasks("runner_manager"),
+        "Extract existing Runner registration metadata",
+    )
+    set_fact_arguments = cast(dict[str, str], task["ansible.builtin.set_fact"])
+    encoded_config = base64.b64encode(b"concurrent = 1\n").decode("ascii")
+    variables: dict[str, object] = {
+        "existing_runner_config_file": {"stat": {"exists": True}},
+        "existing_runner_config": {"content": encoded_config},
+    }
+
+    for expression in set_fact_arguments.values():
+        assert "regex_search" not in expression
+        assert _render_runner_manager_fact(expression, variables) == ""
 
 
 def test_missing_runner_account_skips_existing_home_assertion() -> None:
