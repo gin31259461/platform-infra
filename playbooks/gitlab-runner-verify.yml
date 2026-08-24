@@ -9,3 +9,5 @@
     - role: preflight
     - role: runner_facts
     - role: runner_validation
+      vars:
+        runner_validation_require_registration: true

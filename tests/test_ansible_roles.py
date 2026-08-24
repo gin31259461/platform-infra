@@ -226,6 +226,7 @@ def test_runner_validation_requires_persisted_registration_before_verify() -> No
         tasks,
         "Derive persisted Runner registration count",
     )
+    require_task = _task_named(tasks, "Require one registered Runner")
     verify_task = _task_named(tasks, "Verify registered Runner connectivity")
     set_fact_arguments = cast(
         dict[str, str],
@@ -246,8 +247,52 @@ def test_runner_validation_requires_persisted_registration_before_verify() -> No
         )
         == "1"
     )
-    assert "when" not in verify_task
+    assert "runner_validation_require_registration" in cast(
+        str,
+        require_task["when"],
+    )
+    assert "runner_validation_registration_count" in cast(
+        str,
+        verify_task["when"],
+    )
     assert not any(task.get("name") == "List registered Runners" for task in tasks)
+
+
+def test_registration_requirement_is_scoped_to_register_and_verify() -> None:
+    """Initial installation must allow an unregistered manager configuration."""
+    repository_root = Path(__file__).parents[1]
+    install_play = cast(
+        list[dict[str, object]],
+        yaml.safe_load(
+            (repository_root / "playbooks/gitlab-runner.yml").read_text(
+                encoding="utf-8"
+            )
+        ),
+    )[0]
+    verify_play = cast(
+        list[dict[str, object]],
+        yaml.safe_load(
+            (repository_root / "playbooks/gitlab-runner-verify.yml").read_text(
+                encoding="utf-8"
+            )
+        ),
+    )[0]
+    install_roles = cast(list[dict[str, object]], install_play["roles"])
+    verify_roles = cast(list[dict[str, object]], verify_play["roles"])
+    install_validation = next(
+        role for role in install_roles if role.get("role") == "runner_validation"
+    )
+    verify_validation = next(
+        role for role in verify_roles if role.get("role") == "runner_validation"
+    )
+    registration_task = _task_named(
+        _load_role_tasks("runner_registration"),
+        "Verify registered Runner",
+    )
+
+    assert "vars" not in install_validation
+    assert verify_validation["vars"] == {"runner_validation_require_registration": True}
+    assert registration_task["vars"] == {"runner_validation_require_registration": True}
 
 
 def test_runner_status_detects_registration_independently_of_display_name() -> None:

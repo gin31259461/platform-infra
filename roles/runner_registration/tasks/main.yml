@@ -135,3 +135,5 @@
 - name: Verify registered Runner
   ansible.builtin.include_role:
     name: runner_validation
+  vars:
+    runner_validation_require_registration: true

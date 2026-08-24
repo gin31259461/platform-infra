@@ -127,6 +127,7 @@
     that:
       - runner_validation_registration_count | int == 1
     fail_msg: The dedicated Runner stack must contain one registration.
+  when: runner_validation_require_registration | default(false) | bool
 
 - name: Verify registered Runner connectivity
   become: true
@@ -139,6 +140,7 @@
       - "{{ runner.service_name }}"
       - gitlab-runner
       - verify
+  when: runner_validation_registration_count | int == 1
   changed_when: false
   no_log: true
 
