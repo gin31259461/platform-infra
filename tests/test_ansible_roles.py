@@ -1,12 +1,13 @@
 """Contract tests for Ansible roles."""
 
 import base64
-import re
 from pathlib import Path
 from typing import cast
 
 import pytest
 import yaml
+from ansible.parsing.dataloader import DataLoader  # type: ignore[import-untyped]
+from ansible.template import Templar  # type: ignore[import-untyped]
 from jinja2 import StrictUndefined
 from jinja2.nativetypes import NativeEnvironment
 
@@ -39,22 +40,9 @@ def _render_native(expression: str, variables: dict[str, object]) -> object:
     return environment.from_string(expression).render(variables)
 
 
-def _decode_base64(value: str) -> str:
-    return base64.b64decode(value).decode("utf-8")
-
-
-def _regex_findall(value: str, pattern: str) -> list[str]:
-    return re.findall(pattern, value)
-
-
-def _render_runner_manager_fact(
-    expression: str,
-    variables: dict[str, object],
-) -> object:
-    environment = NativeEnvironment(undefined=StrictUndefined)
-    environment.filters["b64decode"] = _decode_base64
-    environment.filters["regex_findall"] = _regex_findall
-    return environment.from_string(expression).render(variables)
+def _render_ansible(expression: str, variables: dict[str, object]) -> object:
+    templar = Templar(loader=DataLoader(), variables=variables)
+    return templar.template(expression)
 
 
 def test_local_inventory_uses_system_python_for_become_user_tasks() -> None:
@@ -137,7 +125,85 @@ def test_unregistered_config_has_empty_registration_metadata() -> None:
 
     for expression in set_fact_arguments.values():
         assert "regex_search" not in expression
-        assert _render_runner_manager_fact(expression, variables) == ""
+        assert _render_ansible(expression, variables) == ""
+
+
+def test_registered_config_preserves_registration_metadata_in_ansible() -> None:
+    """Metadata expressions must use Ansible's actual regex escaping rules."""
+    task = _task_named(
+        _load_role_tasks("runner_manager"),
+        "Extract existing Runner registration metadata",
+    )
+    set_fact_arguments = cast(dict[str, str], task["ansible.builtin.set_fact"])
+    encoded_config = base64.b64encode(
+        b"[[runners]]\n"
+        b"  id = 123\n"
+        b'  token = "credential-marker"\n'
+        b"  token_obtained_at = 2026-08-24T00:00:00Z\n"
+        b"  token_expires_at = 0001-01-01T00:00:00Z\n"
+    ).decode("ascii")
+    variables: dict[str, object] = {
+        "existing_runner_config_file": {"stat": {"exists": True}},
+        "existing_runner_config": {"content": encoded_config},
+    }
+
+    expected = {
+        "runner_existing_id": "123",
+        "runner_existing_token": "credential-marker",
+        "runner_existing_token_obtained_at": "2026-08-24T00:00:00Z",
+        "runner_existing_token_expires_at": "0001-01-01T00:00:00Z",
+    }
+    assert {
+        name: _render_ansible(expression, variables)
+        for name, expression in set_fact_arguments.items()
+    } == expected
+
+
+def test_registration_uses_persisted_credential_instead_of_display_name() -> None:
+    """A matching registration may use a GitLab-managed display name."""
+    tasks = _load_role_tasks("runner_registration")
+    metadata_task = _task_named(
+        tasks,
+        "Derive persisted registration metadata without exposing token output",
+    )
+    state_task = _task_named(
+        tasks,
+        "Derive existing registration state without exposing token output",
+    )
+    metadata_arguments = cast(
+        dict[str, str],
+        metadata_task["ansible.builtin.set_fact"],
+    )
+    state_arguments = cast(dict[str, str], state_task["ansible.builtin.set_fact"])
+    encoded_config = base64.b64encode(
+        b"[[runners]]\n"
+        b'  name = "arch"\n'
+        b'  token = "credential-marker"\n'
+        b'  executor = "docker"\n'
+    ).decode("ascii")
+    variables: dict[str, object] = {
+        "runner": {"name": "A-frontend-podman"},
+        "runner_registration_token": "credential-marker",
+        "runner_registration_config_file": {"stat": {"exists": True}},
+        "runner_registration_config": {"content": encoded_config},
+    }
+    metadata = {
+        name: _render_ansible(expression, variables)
+        for name, expression in metadata_arguments.items()
+    }
+    variables.update(metadata)
+
+    assert metadata == {
+        "runner_registration_count": "1",
+        "runner_registration_tokens": ["credential-marker"],
+    }
+    assert {
+        name: _render_ansible(expression, variables)
+        for name, expression in state_arguments.items()
+    } == {
+        "runner_registration_present": True,
+        "runner_registration_compatible": True,
+    }
 
 
 def test_runner_lint_is_guarded_by_cli_feature_detection() -> None:
@@ -151,6 +217,37 @@ def test_runner_lint_is_guarded_by_cli_feature_detection() -> None:
     assert help_argv[-2:] == ["gitlab-runner", "--help"]
     assert help_task["register"] == "runner_cli_help"
     assert "runner_cli_help.stdout_lines" in cast(str, lint_task["when"])
+
+
+def test_runner_validation_requires_persisted_registration_before_verify() -> None:
+    """Connectivity verification must not depend on CLI list output formatting."""
+    tasks = _load_role_tasks("runner_validation")
+    count_task = _task_named(
+        tasks,
+        "Derive persisted Runner registration count",
+    )
+    verify_task = _task_named(tasks, "Verify registered Runner connectivity")
+    set_fact_arguments = cast(
+        dict[str, str],
+        count_task["ansible.builtin.set_fact"],
+    )
+    encoded_config = base64.b64encode(
+        b'[[runners]]\n  token = "credential-marker"\n'
+    ).decode("ascii")
+    variables: dict[str, object] = {
+        "runner_validation_config_file": {"stat": {"exists": True}},
+        "runner_validation_config": {"content": encoded_config},
+    }
+
+    assert (
+        _render_ansible(
+            set_fact_arguments["runner_validation_registration_count"],
+            variables,
+        )
+        == "1"
+    )
+    assert "when" not in verify_task
+    assert not any(task.get("name") == "List registered Runners" for task in tasks)
 
 
 def test_runner_status_detects_registration_independently_of_display_name() -> None:
@@ -170,7 +267,7 @@ def test_runner_status_detects_registration_independently_of_display_name() -> N
     }
 
     assert (
-        _render_runner_manager_fact(
+        _render_ansible(
             set_fact_arguments["runner_status_registered"],
             variables,
         )
@@ -198,7 +295,7 @@ def test_runner_status_uses_persisted_registration_when_probe_is_unavailable() -
     assert read_task["no_log"] is True
     assert task["no_log"] is True
     assert (
-        _render_runner_manager_fact(
+        _render_ansible(
             set_fact_arguments["runner_status_registered"],
             variables,
         )
@@ -215,7 +312,7 @@ def test_runner_status_reports_missing_configuration_as_unregistered() -> None:
     set_fact_arguments = cast(dict[str, str], task["ansible.builtin.set_fact"])
 
     assert (
-        _render_runner_manager_fact(
+        _render_ansible(
             set_fact_arguments["runner_status_registered"],
             {"runner_status_config_file": {"stat": {"exists": False}}},
         )

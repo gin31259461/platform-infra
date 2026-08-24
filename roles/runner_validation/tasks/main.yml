@@ -97,20 +97,36 @@
     ) > 0
   changed_when: false
 
-- name: List registered Runners
-  become: true
-  become_user: "{{ runner_account_user }}"
-  environment: "{{ runner_systemd_environment }}"
-  ansible.builtin.command:
-    argv:
-      - podman
-      - exec
-      - "{{ runner.service_name }}"
-      - gitlab-runner
-      - list
-  register: runner_registration_list
-  changed_when: false
+- name: Inspect persisted Runner configuration
+  ansible.builtin.stat:
+    path: "{{ runner_config_file }}"
+  register: runner_validation_config_file
+
+- name: Read persisted Runner configuration
+  ansible.builtin.slurp:
+    src: "{{ runner_config_file }}"
+  register: runner_validation_config
+  when: runner_validation_config_file.stat.exists
   no_log: true
+
+- name: Derive persisted Runner registration count
+  ansible.builtin.set_fact:
+    runner_validation_registration_count: >-
+      {{
+        (
+          runner_validation_config.content | b64decode |
+          regex_findall('(?m)^\s*\[\[runners\]\]\s*$') | length
+        )
+        if runner_validation_config_file.stat.exists
+        else 0
+      }}
+  no_log: true
+
+- name: Require one registered Runner
+  ansible.builtin.assert:
+    that:
+      - runner_validation_registration_count | int == 1
+    fail_msg: The dedicated Runner stack must contain one registration.
 
 - name: Verify registered Runner connectivity
   become: true
@@ -123,9 +139,6 @@
       - "{{ runner.service_name }}"
       - gitlab-runner
       - verify
-  when: >-
-    'Executor=' in runner_registration_list.stderr or
-    'Executor=' in runner_registration_list.stdout
   changed_when: false
   no_log: true
 

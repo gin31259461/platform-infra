@@ -36,43 +36,59 @@
       - "{{ runner.service_name }}.service"
   changed_when: false
 
-- name: List existing Runner registrations
-  become: true
-  become_user: "{{ runner_account_user }}"
-  environment: "{{ runner_systemd_environment }}"
-  ansible.builtin.command:
-    argv:
-      - podman
-      - exec
-      - "{{ runner.service_name }}"
-      - gitlab-runner
-      - list
-  register: existing_runner_registrations
-  changed_when: false
+- name: Inspect persisted Runner configuration
+  ansible.builtin.stat:
+    path: "{{ runner_config_file }}"
+  register: runner_registration_config_file
+
+- name: Read persisted Runner configuration
+  ansible.builtin.slurp:
+    src: "{{ runner_config_file }}"
+  register: runner_registration_config
+  when: runner_registration_config_file.stat.exists
   no_log: true
+
+- name: Derive persisted registration metadata without exposing token output
+  ansible.builtin.set_fact:
+    runner_registration_count: >-
+      {{
+        (
+          runner_registration_config.content | b64decode |
+          regex_findall('(?m)^\s*\[\[runners\]\]\s*$') | length
+        )
+        if runner_registration_config_file.stat.exists
+        else 0
+      }}
+    runner_registration_tokens: >-
+      {{
+        (
+          runner_registration_config.content | b64decode |
+          regex_findall('(?m)^\s*token\s*=\s*"([^"]+)"\s*$')
+        )
+        if runner_registration_config_file.stat.exists
+        else []
+      }}
+  no_log: true
+
+- name: Require one complete registration per dedicated stack
+  ansible.builtin.assert:
+    that:
+      - runner_registration_count | int <= 1
+      - runner_registration_tokens | length == runner_registration_count | int
+    fail_msg: >-
+      This dedicated Runner stack contains incomplete or multiple registration
+      metadata. Purge it explicitly before registering another Runner.
 
 - name: Derive existing registration state without exposing token output
   ansible.builtin.set_fact:
     runner_registration_present: >-
       {{
-        runner.name in
-        (
-          existing_runner_registrations.stdout ~
-          existing_runner_registrations.stderr
-        )
+        runner_registration_count | int == 1
       }}
     runner_registration_compatible: >-
       {{
-        'Executor=' not in
-        (
-          existing_runner_registrations.stdout ~
-          existing_runner_registrations.stderr
-        ) or
-        runner.name in
-        (
-          existing_runner_registrations.stdout ~
-          existing_runner_registrations.stderr
-        )
+        runner_registration_count | int == 0 or
+        runner_registration_token in runner_registration_tokens
       }}
   no_log: true
 

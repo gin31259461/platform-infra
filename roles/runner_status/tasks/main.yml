@@ -47,7 +47,7 @@
       {{
         (
           runner_status_config.content | b64decode |
-          regex_findall('(?m)^\\s*\\[\\[runners\\]\\]\\s*$') | length
+          regex_findall('(?m)^\s*\[\[runners\]\]\s*$') | length
         )
         > 0
         if runner_status_config_file.stat.exists
