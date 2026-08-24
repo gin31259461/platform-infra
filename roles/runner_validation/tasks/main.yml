@@ -62,7 +62,21 @@
       - runner_container_state.stdout | trim == "true host false"
     fail_msg: Runner manager must be running, unprivileged, and on the host network.
 
-- name: Lint Runner configuration
+- name: Read Runner CLI commands
+  become: true
+  become_user: "{{ runner_account_user }}"
+  environment: "{{ runner_systemd_environment }}"
+  ansible.builtin.command:
+    argv:
+      - podman
+      - exec
+      - "{{ runner.service_name }}"
+      - gitlab-runner
+      - --help
+  register: runner_cli_help
+  changed_when: false
+
+- name: Lint Runner configuration when supported
   become: true
   become_user: "{{ runner_account_user }}"
   environment: "{{ runner_systemd_environment }}"
@@ -75,6 +89,12 @@
       - lint
       - --config
       - /etc/gitlab-runner/config.toml
+  when: >-
+    (
+      runner_cli_help.stdout_lines |
+      select('match', '^\s+lint\s+') |
+      list | length
+    ) > 0
   changed_when: false
 
 - name: List registered Runners

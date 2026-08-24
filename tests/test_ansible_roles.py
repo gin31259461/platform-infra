@@ -140,6 +140,19 @@ def test_unregistered_config_has_empty_registration_metadata() -> None:
         assert _render_runner_manager_fact(expression, variables) == ""
 
 
+def test_runner_lint_is_guarded_by_cli_feature_detection() -> None:
+    """Pinned Runner releases may not provide the lint command."""
+    tasks = _load_role_tasks("runner_validation")
+    help_task = _task_named(tasks, "Read Runner CLI commands")
+    help_command = cast(dict[str, object], help_task["ansible.builtin.command"])
+    help_argv = cast(list[str], help_command["argv"])
+    lint_task = _task_named(tasks, "Lint Runner configuration when supported")
+
+    assert help_argv[-2:] == ["gitlab-runner", "--help"]
+    assert help_task["register"] == "runner_cli_help"
+    assert "runner_cli_help.stdout_lines" in cast(str, lint_task["when"])
+
+
 def test_missing_runner_account_skips_existing_home_assertion() -> None:
     """A missing getent entry must not be treated as an existing account."""
     task = _task_named(
