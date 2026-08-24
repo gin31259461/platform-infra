@@ -12,7 +12,7 @@
     fail_msg: >-
       Existing account {{ runner_account_user }} uses a different home directory.
       Resolve it manually before continuing.
-  when: runner_account_user in ansible_facts.getent_passwd
+  when: ansible_facts.getent_passwd[runner_account_user] is not none
 
 - name: Create dedicated Runner account
   ansible.builtin.user:

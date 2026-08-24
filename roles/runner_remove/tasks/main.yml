@@ -29,11 +29,12 @@
 
 - name: Store removal account facts
   ansible.builtin.set_fact:
-    removal_runner_exists: "{{ removal_runner_user in ansible_facts.getent_passwd }}"
+    removal_runner_exists: >-
+      {{ ansible_facts.getent_passwd[removal_runner_user] is not none }}
     removal_runner_uid: >-
       {{
         ansible_facts.getent_passwd[removal_runner_user][1]
-        if removal_runner_user in ansible_facts.getent_passwd
+        if ansible_facts.getent_passwd[removal_runner_user] is not none
         else ''
       }}
 
