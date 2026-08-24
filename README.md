@@ -1,220 +1,143 @@
 # platform-infra
 
-Python and Ansible automation for isolated GitLab Runner hosts backed by
-rootless Podman.
+[![Python 3.13](https://img.shields.io/badge/Python-3.13-3776AB?logo=python&logoColor=white)](https://www.python.org/downloads/)
 
-Each stack owns one Linux account, one rootless Podman API socket, one Runner
-manager container, one registration, and one cache directory. The Runner
-manager receives the Podman socket. CI job containers do not receive it.
+Deploy isolated GitLab Runners on systemd Linux hosts with a typed Python CLI,
+Ansible, and rootless Podman. Each stack gets a dedicated Linux account,
+Podman API socket, Runner manager, registration, and cache directory. The
+manager can use the socket; CI job containers cannot.
 
-## Supported managed hosts
+## Requirements
 
-The managed host must provide:
+The control node needs Python and Git. `bootstrap.py` supports Arch, Debian,
+and Red Hat package families and prepares the pinned Python, uv, and Ansible
+toolchain for this repository.
 
-- systemd with user services and lingering
-- cgroup v2
-- rootless Podman 4.2 or newer
-- aardvark-dns newer than 1.10.0
-- subordinate UID and GID mappings
-- SSH and Python for remote Ansible management
+Managed hosts must provide:
 
-The Ansible roles support these package families:
+- systemd user services and lingering;
+- cgroup v2;
+- rootless Podman 4.2 or newer;
+- aardvark-dns newer than 1.10.0;
+- subordinate UID and GID mappings; and
+- Python plus SSH for remote management.
 
-- Arch Linux
-- Debian and Ubuntu
-- Fedora, RHEL, Rocky Linux, and AlmaLinux
+The roles support Arch Linux; Debian and Ubuntu; and Fedora, RHEL, Rocky Linux,
+and AlmaLinux. See [distribution support](docs/DISTRIBUTIONS.md) for package,
+version, and CA trust details.
 
-The roles intentionally reject Alpine, Void, and other non-systemd systems.
-Those platforms require a different service lifecycle, not only different
-package names.
+## Prepare the control node
 
-See `docs/DISTRIBUTIONS.md` for package and version caveats.
-
-## Architecture
-
-```text
-bootstrap.py
-  -> pinned uv project environment
-      -> typed Python CLI
-          -> configuration validation and process orchestration
-          -> Ansible playbooks
-              -> packages, users, systemd, rootless Podman, TLS, Runner state
-```
-
-Python does not reimplement package management or service convergence.
-Ansible owns persistent host state. Python owns stack parsing, validation,
-command composition, token input, and application-level workflows.
-
-See `docs/ARCHITECTURE.md` for layer boundaries and secret flow.
-
-## Bootstrap the control node
-
-Run the standard-library-only bootstrap from the repository root:
+From the repository root, run the standard-library-only bootstrap:
 
 ```bash
 python3 bootstrap.py
 ```
 
-The bootstrap:
+It installs the minimum native prerequisites, creates isolated local
+environments, syncs dependencies from `uv.lock`, and installs the collections
+in `requirements.yml`. Commit changes to `uv.lock`; do not commit `.venv`,
+`.bootstrap-venv`, or `.ansible/collections`.
 
-1. Detects an Arch, Debian, or RedHat-family control node.
-2. Installs the minimum native Python and Git packages.
-3. Creates `.bootstrap-venv`.
-4. Installs the pinned `uv` version in that isolated environment.
-5. Generates `uv.lock` when it is missing or stale.
-6. Syncs `.venv` from the lockfile.
-7. Installs pinned Ansible collections under `.ansible/collections`.
+## Configure a Runner stack
 
-Commit the generated `uv.lock`. Do not commit `.venv`, `.bootstrap-venv`, or
-`.ansible/collections`.
-
-## Configure a stack
+Start from a committed example and edit the ignored local configuration:
 
 ```bash
 cp \
   stacks/gitlab-runners/frontend/config.example.yml \
   stacks/gitlab-runners/frontend/config.yml
-
 $EDITOR stacks/gitlab-runners/frontend/config.yml
-```
 
-Local `config.yml` files and public CA certificate files are ignored by Git.
-Tokens, passwords, private keys, and secret-like fields are rejected from stack
-YAML.
-
-Validate one stack:
-
-```bash
 uv run --locked platform-infra validate \
   --stack gitlab-runners/frontend
 ```
 
-Validate every local stack, or its committed example when no local config
-exists:
+`validate-all` selects each local `config.yml` when present and otherwise
+validates its committed `config.example.yml`. It also rejects duplicate Runner
+accounts and services, overlapping subordinate-ID ranges, missing public CA
+files, and invalid playbook syntax:
 
 ```bash
 uv run --locked platform-infra validate-all
 ```
 
-## Inventory
+Local stack files, `inventory/hosts.yml`, and public CA files are ignored by
+Git. Stack YAML rejects unknown, secret-like, and unsafe values. In particular,
+Runners must remain unprivileged, isolated to one concurrent job, restricted by
+image allowlists, and configured with registry-qualified images that do not use
+the `latest` tag.
 
-Local host:
+## Deploy and register
 
-```bash
-uv run --locked platform-infra install \
-  --stack gitlab-runners/frontend \
-  --inventory inventory/localhost.yml
-```
-
-Remote host:
+Create an inventory for the target hosts:
 
 ```bash
 cp inventory/hosts.example.yml inventory/hosts.yml
 $EDITOR inventory/hosts.yml
-
-uv run --locked platform-infra install \
-  --stack gitlab-runners/frontend \
-  --inventory inventory/hosts.yml
 ```
 
-Use `--no-ask-become-pass` when passwordless sudo is already configured.
-
-## Deployment workflow
-
-Check network prerequisites without changing the host:
+Check prerequisites, converge the host, then register and verify the Runner:
 
 ```bash
 uv run --locked platform-infra check \
   --stack gitlab-runners/frontend \
   --inventory inventory/hosts.yml
-```
 
-Converge the host:
-
-```bash
 uv run --locked platform-infra install \
   --stack gitlab-runners/frontend \
   --inventory inventory/hosts.yml
-```
 
-Create a GitLab Runner authentication token in GitLab, then register it:
-
-```bash
 export GITLAB_RUNNER_TOKEN='glrt-...'
-
 uv run --locked platform-infra register \
   --stack gitlab-runners/frontend \
   --inventory inventory/hosts.yml
-
 unset GITLAB_RUNNER_TOKEN
-```
 
-The token is supplied to the local `ansible-playbook` process through an
-environment variable. It is not written to inventory, stack YAML, generated
-extra-vars, or command arguments. The Ansible registration task uses `no_log`
-and injects the token into the remote registration process environment.
-
-Runner tags, protection, lock status, and run-untagged policy are server-side
-Runner attributes. Configure them when creating the Runner in the GitLab UI or
-API before copying its authentication token. The `runner.tags` field documents
-and validates the intended assignment; registration does not mutate GitLab
-server-side attributes.
-
-Verify and inspect:
-
-```bash
 uv run --locked platform-infra verify \
   --stack gitlab-runners/frontend \
   --inventory inventory/hosts.yml
-
-uv run --locked platform-infra status \
-  --stack gitlab-runners/frontend \
-  --inventory inventory/hosts.yml
-
-uv run --locked platform-infra idempotency \
-  --stack gitlab-runners/frontend \
-  --inventory inventory/hosts.yml
 ```
 
-Remove only the manager service and CA material:
+The token reaches `ansible-playbook` through the process environment and is
+handled under `no_log`; it is not written to YAML, inventory, extra variables,
+or command arguments. Configure tags, protection, lock status, and
+run-untagged policy in GitLab before copying the authentication token.
 
-```bash
-uv run --locked platform-infra uninstall \
-  --stack gitlab-runners/frontend \
-  --inventory inventory/hosts.yml \
-  --yes
-```
+Use `--no-ask-become-pass` with host commands when passwordless privilege
+escalation is already configured. The default inventory is
+`inventory/localhost.yml`.
 
-Purge the account, home, cache, rootless socket, and registration files:
+## Operate a stack
 
-```bash
-uv run --locked platform-infra uninstall \
-  --stack gitlab-runners/frontend \
-  --inventory inventory/hosts.yml \
-  --purge \
-  --yes
-```
+Every host command accepts `--stack` and `--inventory`:
 
-## Arch Linux updates
+| Command | Result |
+| --- | --- |
+| `status` | Reports manager, container, and registration state. |
+| `verify` | Verifies host, Podman, manager, registration, and job networking. |
+| `idempotency` | Converges twice and requires zero changes on the second pass. |
+| `uninstall --yes` | Removes the manager service and managed CA material. |
+| `uninstall --purge --yes` | Also removes the account, home, cache, socket, and registration. |
 
-The package role never performs a partial Arch Linux repository refresh.
-Normal convergence installs packages from the existing package database.
-During an explicit maintenance window, enable a full system upgrade in
-inventory:
+On Arch Linux, normal convergence installs packages without refreshing package
+metadata. Set `runner_update_operating_system: true` in inventory only during
+an explicit maintenance window to perform a repository refresh and full system
+upgrade together.
 
-```yaml
-all:
-  children:
-    runner_hosts:
-      vars:
-        runner_update_operating_system: true
-```
+## Architecture
 
-After the maintenance run, set it back to `false`.
+Python owns stack discovery, typed validation, secret input, command
+composition, and process boundaries. Ansible owns persistent managed-host
+state, including packages, accounts, systemd, Podman, TLS, and Runner state.
+The domain and application layers do not import infrastructure libraries.
 
-## Quality gates
+See [architecture](docs/ARCHITECTURE.md) for layer boundaries, deployment
+planes, configuration ownership, and token flow.
 
-All Python tooling is configured in `pyproject.toml`.
+## Development
+
+Run the same quality gates used by CI before committing:
 
 ```bash
 uv lock --check
@@ -227,18 +150,5 @@ uv run --locked ansible-lint
 uv run --locked platform-infra validate-all
 ```
 
-These commands are mandatory in GitLab CI.
-
-## Security invariants
-
-- One dedicated Linux account and rootless Podman socket per stack.
-- The manager container receives the Podman socket; CI jobs do not.
-- `runner.privileged` must remain `false`.
-- `runner.concurrent` must remain `1` for one-stack-per-account isolation.
-- The manager uses host networking for VPN reachability.
-- Jobs use per-build networks through `FF_NETWORK_PER_BUILD=1`.
-- Image allowlists are required.
-- Images must be registry-qualified and cannot use the `latest` tag.
-- Private CA support installs only public certificates.
-- TLS certificate verification is never disabled.
-- Runner authentication tokens are accepted only at the registration boundary.
+Repository-specific ownership, safety, and editing rules are in
+[AGENTS.md](AGENTS.md).
