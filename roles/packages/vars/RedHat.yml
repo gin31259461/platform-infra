@@ -15,3 +15,4 @@ runner_ca_anchor_directory: /etc/pki/ca-trust/source/anchors
 runner_ca_update_command:
   - update-ca-trust
   - extract
+runner_aardvark_dns_executable: aardvark-dns

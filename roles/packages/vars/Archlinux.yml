@@ -16,3 +16,4 @@ runner_ca_anchor_directory: /etc/ca-certificates/trust-source/anchors
 runner_ca_update_command:
   - trust
   - extract-compat
+runner_aardvark_dns_executable: /usr/lib/podman/aardvark-dns

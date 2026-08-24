@@ -70,6 +70,38 @@ def test_pacman_tasks_separate_package_installation_from_system_upgrade() -> Non
     )
 
 
+@pytest.mark.parametrize(
+    ("variable_file", "expected_executable"),
+    [
+        ("Archlinux.yml", "/usr/lib/podman/aardvark-dns"),
+        ("Debian.yml", "aardvark-dns"),
+        ("RedHat.yml", "aardvark-dns"),
+    ],
+)
+def test_aardvark_dns_uses_distribution_executable(
+    variable_file: str,
+    expected_executable: str,
+) -> None:
+    """Use the aardvark-dns path supplied by each distribution package."""
+    repository_root = Path(__file__).parents[1]
+    variable_path = repository_root / "roles" / "packages" / "vars" / variable_file
+    distribution_variables = cast(
+        dict[str, object],
+        yaml.safe_load(variable_path.read_text(encoding="utf-8")),
+    )
+    task = _task_named(
+        _load_role_tasks("rootless_podman"),
+        "Read aardvark-dns version",
+    )
+    command_arguments = cast(dict[str, object], task["ansible.builtin.command"])
+    argv = cast(list[str], command_arguments["argv"])
+
+    assert argv[0] == "{{ runner_aardvark_dns_executable }}"
+    assert (
+        distribution_variables["runner_aardvark_dns_executable"] == expected_executable
+    )
+
+
 def test_missing_runner_account_skips_existing_home_assertion() -> None:
     """A missing getent entry must not be treated as an existing account."""
     task = _task_named(

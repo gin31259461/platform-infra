@@ -58,7 +58,7 @@
 - name: Read aardvark-dns version
   ansible.builtin.command:
     argv:
-      - aardvark-dns
+      - "{{ runner_aardvark_dns_executable }}"
       - --version
   register: runner_aardvark_version_output
   changed_when: false
