@@ -3,6 +3,7 @@
 from pathlib import Path
 from typing import cast
 
+import pytest
 import yaml
 from jinja2 import StrictUndefined
 from jinja2.nativetypes import NativeEnvironment
@@ -84,3 +85,40 @@ def test_missing_runner_account_has_no_removal_identity() -> None:
         _render_native(set_fact_arguments["removal_runner_exists"], variables) is False
     )
     assert _render_native(set_fact_arguments["removal_runner_uid"], variables) == ""
+
+
+@pytest.mark.parametrize(
+    ("task_name", "runner_start_variable"),
+    [
+        ("Reject overlapping subordinate UID allocations", "runner_subuid_start"),
+        ("Reject overlapping subordinate GID allocations", "runner_subgid_start"),
+    ],
+)
+def test_subordinate_range_compares_string_boundaries_numerically(
+    task_name: str,
+    runner_start_variable: str,
+) -> None:
+    """Ansible may preserve computed task variables as unsafe text."""
+    task = _task_named(_load_role_tasks("runner_user"), task_name)
+    assert_arguments = cast(dict[str, object], task["ansible.builtin.assert"])
+    conditions = cast(list[str], assert_arguments["that"])
+    variables: dict[str, object] = {
+        "desired_range_end": "165535",
+        "existing_range_start": "1000",
+        "existing_range_end": "2000",
+        runner_start_variable: 100000,
+    }
+
+    assert all(
+        _render_native(f"{{{{ {condition} }}}}", variables) is True
+        for condition in conditions
+    )
+
+    overlapping_variables = variables | {
+        "existing_range_start": "120000",
+        "existing_range_end": "130000",
+    }
+    assert all(
+        _render_native(f"{{{{ {condition} }}}}", overlapping_variables) is False
+        for condition in conditions
+    )

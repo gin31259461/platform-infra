@@ -42,7 +42,9 @@
 - name: Reject overlapping subordinate UID allocations
   ansible.builtin.assert:
     that:
-      - desired_range_end < existing_range_start or runner_subuid_start | int > existing_range_end
+      - >-
+        (desired_range_end | int) < (existing_range_start | int) or
+        (runner_subuid_start | int) > (existing_range_end | int)
     fail_msg: >-
       Desired subordinate UID range {{ runner_subuid_start }}:{{ runner_subordinate_id_count }}
       overlaps allocation {{ item }}.
@@ -90,7 +92,9 @@
 - name: Reject overlapping subordinate GID allocations
   ansible.builtin.assert:
     that:
-      - desired_range_end < existing_range_start or runner_subgid_start | int > existing_range_end
+      - >-
+        (desired_range_end | int) < (existing_range_start | int) or
+        (runner_subgid_start | int) > (existing_range_end | int)
     fail_msg: >-
       Desired subordinate GID range {{ runner_subgid_start }}:{{ runner_subordinate_id_count }}
       overlaps allocation {{ item }}.
